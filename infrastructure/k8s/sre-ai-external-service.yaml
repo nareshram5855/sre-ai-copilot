@@ -1,0 +1,49 @@
+---
+# Headless Service + manual Endpoints so Prometheus can reach the FastAPI
+# backend running on the host machine (host.minikube.internal = 192.168.105.1).
+apiVersion: v1
+kind: Service
+metadata:
+  name: sre-ai-backend
+  namespace: monitoring
+  labels:
+    app: sre-ai-backend
+    team: sre
+spec:
+  clusterIP: None
+  ports:
+    - name: http-metrics
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: sre-ai-backend
+  namespace: monitoring
+subsets:
+  - addresses:
+      - ip: 192.168.105.1   # host.minikube.internal (qemu2 driver)
+    ports:
+      - name: http-metrics
+        port: 8080
+        protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sre-ai-backend
+  namespace: monitoring
+  labels:
+    app: sre-ai-backend
+    release: kube-prometheus-stack   # must match Prometheus serviceMonitorSelector
+spec:
+  selector:
+    matchLabels:
+      app: sre-ai-backend
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

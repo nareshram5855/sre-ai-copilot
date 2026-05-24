@@ -1,0 +1,169 @@
+---
+# Grafana auto-discovers this ConfigMap via the sidecar label.
+# Dashboard covers: triage volume, agent latency, LLM tier split,
+# RAG hit rate, active sessions, Slack notifications.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sre-ai-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  sre-ai-dashboard.json: |
+    {
+      "uid": "sre-ai-copilot",
+      "title": "SRE AI Copilot",
+      "tags": ["sre-ai", "llm", "rag"],
+      "timezone": "browser",
+      "refresh": "15s",
+      "schemaVersion": 38,
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Triage Requests (total)",
+          "type": "stat",
+          "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+          "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [{"color":"green","value":null}] }
+            }
+          },
+          "targets": [{
+            "expr": "sum(sre_triage_total) or vector(0)",
+            "legendFormat": "Total triages"
+          }]
+        },
+        {
+          "id": 2,
+          "title": "Active Chat Sessions",
+          "type": "stat",
+          "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+          "options": { "colorMode": "background", "graphMode": "none" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [{"color":"blue","value":null}] }
+            }
+          },
+          "targets": [{
+            "expr": "sre_active_sessions or vector(0)",
+            "legendFormat": "Sessions"
+          }]
+        },
+        {
+          "id": 3,
+          "title": "Slack Notifications Sent",
+          "type": "stat",
+          "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+          "options": { "colorMode": "background", "graphMode": "area" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [{"color":"purple","value":null}] }
+            }
+          },
+          "targets": [{
+            "expr": "sum(sre_slack_notifications_total{success=\"true\"}) or vector(0)",
+            "legendFormat": "Sent"
+          }]
+        },
+        {
+          "id": 4,
+          "title": "Agent Errors",
+          "type": "stat",
+          "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+          "options": { "colorMode": "background", "graphMode": "area" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [{"color":"green","value":null},{"color":"red","value":1}] }
+            }
+          },
+          "targets": [{
+            "expr": "sum(sre_agent_errors_total) or vector(0)",
+            "legendFormat": "Errors"
+          }]
+        },
+        {
+          "id": 5,
+          "title": "HTTP Request Rate by Route",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
+          "targets": [{
+            "expr": "sum by (handler) (rate(http_requests_total{job=\"sre-ai-backend\"}[2m]))",
+            "legendFormat": "{{handler}}"
+          }]
+        },
+        {
+          "id": 6,
+          "title": "HTTP p95 Latency by Route",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "s" } },
+          "targets": [{
+            "expr": "histogram_quantile(0.95, sum by (handler, le) (rate(http_request_duration_seconds_bucket{job=\"sre-ai-backend\"}[2m])))",
+            "legendFormat": "p95 {{handler}}"
+          }]
+        },
+        {
+          "id": 7,
+          "title": "Agent Duration p50 / p95 (seconds)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "s" } },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum by (agent, le) (rate(sre_agent_duration_seconds_bucket[5m])))",
+              "legendFormat": "p50 {{agent}}"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (agent, le) (rate(sre_agent_duration_seconds_bucket[5m])))",
+              "legendFormat": "p95 {{agent}}"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "title": "LLM Tier Distribution",
+          "type": "piechart",
+          "gridPos": { "x": 12, "y": 12, "w": 6, "h": 8 },
+          "targets": [{
+            "expr": "sum by (tier) (sre_llm_tier_total)",
+            "legendFormat": "{{tier}}"
+          }]
+        },
+        {
+          "id": 9,
+          "title": "RAG Hits per Query",
+          "type": "timeseries",
+          "gridPos": { "x": 18, "y": 12, "w": 6, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "short" } },
+          "targets": [{
+            "expr": "histogram_quantile(0.50, sum by (collection, le) (rate(sre_rag_hits_bucket[5m])))",
+            "legendFormat": "p50 {{collection}}"
+          }]
+        },
+        {
+          "id": 10,
+          "title": "Triage by Severity",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+          "targets": [{
+            "expr": "sum by (severity) (rate(sre_triage_total[5m]))",
+            "legendFormat": "{{severity}}"
+          }]
+        },
+        {
+          "id": 11,
+          "title": "Triage Escalated Rate",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "percentunit" } },
+          "targets": [{
+            "expr": "sum(rate(sre_triage_total{escalated=\"true\"}[5m])) / sum(rate(sre_triage_total[5m]))",
+            "legendFormat": "Escalation rate"
+          }]
+        }
+      ]
+    }

@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-sre-bg text-gray-100 font-mono;
+  }
+  ::-webkit-scrollbar {
+    @apply w-1.5;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-sre-bg;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-sre-border rounded-full;
+  }
+}

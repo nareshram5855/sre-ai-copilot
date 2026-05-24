@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+.env
+
+# ChromaDB local fallback data
+.chroma_data/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Terraform state (never commit this)
+infrastructure/terraform/.terraform/
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.backup
+infrastructure/terraform/*.tfvars
+
+# IDE
+.idea/
+.vscode/settings.json
+*.swp
+
+# macOS
+.DS_Store

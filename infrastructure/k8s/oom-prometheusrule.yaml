@@ -1,0 +1,59 @@
+---
+# Fires faster and with richer context than the generic KubePodCrashLooping alert.
+# OOMKilled is detected via kube_pod_container_status_last_terminated_reason
+# which is exposed by kube-state-metrics (already running in monitoring ns).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sre-ai-oom-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack   # picked up by the Prometheus operator
+spec:
+  groups:
+    - name: sre-ai.oom
+      interval: 30s
+      rules:
+        # Fires as soon as the container's last termination reason is OOMKilled
+        - alert: JavaPodOOMKilled
+          expr: |
+            kube_pod_container_status_last_terminated_reason{
+              reason="OOMKilled",
+              namespace="demo"
+            } == 1
+          for: 0m
+          labels:
+            severity: critical
+            team: sre
+            language: java
+          annotations:
+            summary: "Java pod OOMKilled in {{ $labels.namespace }}"
+            description: >
+              Container {{ $labels.container }} in pod {{ $labels.pod }}
+              (namespace {{ $labels.namespace }}) was OOMKilled.
+              The JVM heap exceeded the container memory limit.
+              Immediate action required to prevent CrashLoopBackOff.
+
+        # Fires after repeated restarts — gives the AI more context
+        - alert: JavaPodCrashLoopOOM
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace="demo"
+            }[10m]) >= 3
+            and on(pod, namespace)
+            kube_pod_container_status_last_terminated_reason{
+              reason="OOMKilled",
+              namespace="demo"
+            } == 1
+          for: 1m
+          labels:
+            severity: critical
+            team: sre
+            language: java
+          annotations:
+            summary: "Java pod CrashLooping due to OOM in {{ $labels.namespace }}"
+            description: >
+              Pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              has restarted {{ $value | printf "%.0f" }} times in the last 10 minutes
+              due to OOMKilled. The Java heap limit (-Xmx) or the K8s memory limit
+              needs to be increased, or a memory leak must be investigated.

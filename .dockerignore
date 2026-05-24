@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.chroma_data/
+frontend/
+infrastructure/
+monitoring/
+.git/
+*.md

@@ -1,0 +1,47 @@
+# FastAPI
+fastapi~=0.115.5
+uvicorn[standard]~=0.32.1
+python-multipart~=0.0.12
+
+# LangChain ecosystem
+# langchain-core is intentionally unpinned — let pip resolve the version
+# that satisfies langchain + langchain-community simultaneously.
+langchain~=0.3.7
+langchain-community~=0.3.7
+langchain-ollama~=0.2.1
+langchain-chroma~=0.1.4
+
+# LLM providers — imported lazily (only loaded when that tier is used)
+langchain-anthropic~=0.3.3         # Claude Haiku (ADVANCED) + Sonnet (PREMIUM)
+langchain-google-genai~=2.0.7      # Gemini Flash (STANDARD)
+
+# Vector store
+chromadb~=0.5.20
+
+# Config + validation
+pydantic~=2.9.2
+pydantic-settings~=2.6.1
+python-dotenv~=1.0.1
+
+# HTTP client
+httpx~=0.27.2
+requests~=2.32.3
+
+# Document loaders (TextLoader handles .md + .txt natively)
+markdown~=3.7
+
+# Observability
+prometheus-client~=0.21.0
+prometheus-fastapi-instrumentator~=7.0.0
+
+# Multi-agent orchestration (Phase 2)
+langgraph~=0.2.70                  # state graphs, parallel dispatch, checkpointing
+langgraph-checkpoint~=2.0.26       # MemorySaver for cross-API-call state persistence
+
+# Kubernetes integration (Phase 3)
+kubernetes~=31.0.0
+pytest-timeout~=0.5
+
+# Voice module (optional — enable with VOICE_VOICE_ENABLED=true)
+openai-whisper~=20240930
+pyttsx3~=2.98
