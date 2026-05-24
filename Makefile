@@ -48,7 +48,7 @@ setup:
 	@echo "✓ Setup complete. Run 'make ollama-setup' next."
 
 setup-voice:
-	$(PIP) install openai-whisper pyttsx3
+	$(PIP) install -r backend/requirements-voice.txt
 	@echo "✓ Voice deps installed. Set VOICE_VOICE_ENABLED=true in .env to enable."
 
 ollama-setup:

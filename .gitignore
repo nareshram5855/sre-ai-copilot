@@ -8,6 +8,14 @@ venv/
 
 # ChromaDB local fallback data
 .chroma_data/
+.chromadb-data/
+chroma.log
+
+# Stray local experiments (not part of the project)
+app/
+myapp/
+my_flask_app/
+my_python_app/
 
 # Node
 frontend/node_modules/

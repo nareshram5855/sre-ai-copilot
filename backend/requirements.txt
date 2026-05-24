@@ -42,6 +42,4 @@ langgraph-checkpoint~=2.0.26       # MemorySaver for cross-API-call state persis
 kubernetes~=31.0.0
 pytest-timeout~=0.5
 
-# Voice module (optional — enable with VOICE_VOICE_ENABLED=true)
-openai-whisper~=20240930
-pyttsx3~=2.98
+# Voice module deps → backend/requirements-voice.txt (optional)
