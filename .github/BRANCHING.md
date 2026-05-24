@@ -2,9 +2,9 @@
 
 | Branch | Purpose | CI | Merge target |
 |--------|---------|----|--------------|
-| `main` | Production-ready releases | Full CI on push | — |
+| `main` | Production-ready releases | Full CI on push | — | CD on push → GHCR `:latest` |
 | `develop` | Integration branch for features | Full CI on push + PRs to `main` | `main` |
-| `staging` | Pre-release validation | Full CI on push | `main` |
+| `staging` | Pre-release validation | Full CI on push | `main` | CD on push → GHCR `:staging` |
 
 ## Workflow
 
