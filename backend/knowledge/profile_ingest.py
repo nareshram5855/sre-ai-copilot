@@ -216,6 +216,12 @@ _BEHAVIORAL_QUERY_HINTS = (
     "mongodb atlas",
     "networkpolicy",
     "namespace isolation",
+    "secret rotation",
+    "vault agent",
+    "sidecar injector",
+    "vault injector",
+    "openshift migration",
+    "zero downtime",
 )
 
 _PORTFOLIO_QUERY_HINTS = (
@@ -753,6 +759,12 @@ def _build_behavioral_boosted_documents(query: str) -> list[tuple[Document, floa
         elif theme == "network_isolation" and any(
             h in q for h in ("network isolation", "privatelink", "private endpoint", "multi-tenant",
                              "mongodb", "networkpolicy", "namespace", "isolation", "network security")
+        ):
+            score = 0.0
+        elif theme == "secrets_management" and any(
+            h in q for h in ("secret rotation", "vault agent", "sidecar", "vault injector",
+                             "secret management", "downtime", "openshift migration", "vm to container",
+                             "restart", "secrets", "hashicorp vault")
         ):
             score = 0.0
         elif _is_behavioral_query(query):

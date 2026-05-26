@@ -780,6 +780,41 @@ RESUME_BEHAVIORAL_STORIES = [
             "complexity in multi-tenant cloud environments."
         ),
     },
+    {
+        "question": "Tell me about a time you improved secret management or eliminated application downtime during secret rotation.",
+        "theme": "secrets_management",
+        "skills": [
+            "hashicorp vault",
+            "vault agent injector",
+            "openshift",
+            "kubernetes",
+            "secrets management",
+            "secret rotation",
+            "sidecar injector",
+            "vm to container migration",
+            "zero downtime",
+        ],
+        "title": "Vault Agent Sidecar Injector — zero-downtime secret rotation during OpenShift migration",
+        "situation": (
+            "During a migration of applications from VMs to OpenShift, we hit a recurring problem with secret "
+            "management. The applications relied on a custom HashiCorp Vault shell script to fetch secrets at "
+            "startup — it frequently failed due to network timeouts and token expiry. Worse, every time secrets "
+            "were rotated, we had to restart the application pods to pick up new values, causing unnecessary downtime."
+        ),
+        "action": (
+            "I implemented the Vault Agent Injector (Sidecar Injector pattern) in OpenShift. The Vault Agent "
+            "sidecar container was injected automatically into each pod via annotations, fetching and renewing "
+            "secrets directly from Vault and writing them as environment variables or files into a shared volume. "
+            "This replaced the brittle custom script entirely and enabled dynamic secret rotation — the sidecar "
+            "handled lease renewal transparently without any application restarts."
+        ),
+        "result": (
+            "Eliminated the unreliable custom script, removed all application downtime caused by secret rotation, "
+            "and made secret management fully automated and auditable. Teams no longer needed manual intervention "
+            "during rotation cycles. The pattern became the standard approach for all subsequent VM-to-OpenShift "
+            "migrations in the engagement."
+        ),
+    },
 ]
 
 RESUME_ACHIEVEMENTS = [
