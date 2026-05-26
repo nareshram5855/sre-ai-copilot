@@ -3,7 +3,7 @@
 RESUME_PROFILE = {
     "name": "Naresh Vusirikayala",
     "title": "Senior Cloud DevOps Engineer · SRE · AI Platform Engineer",
-    "location": "Irving, TX",
+    "location": "Frisco, TX",
     "email": "nareshvusiri5855@gmail.com",
     "phone": "+1 (737) 224-1812",
     "availability": "Available for SRE · Platform · DevOps roles",
