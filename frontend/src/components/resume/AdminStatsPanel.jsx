@@ -149,7 +149,7 @@ export function AdminStatsPanel({ onClose }) {
                     {(stats.recent_visitors ?? stats.recent_sessions).map((s, i) => (
                       <div key={i} className="flex items-center justify-between bg-sre-bg rounded-lg px-3 py-1.5 gap-2">
                         <span className="text-gray-500 text-[10px] font-mono truncate">
-                          {s.visitor_id || s.session_id}
+                          {s.country_code || "—"} · {s.visitor_id || s.session_id}
                           {s.device_class ? (
                             <span className="text-gray-600 ml-1.5">· {s.device_class}</span>
                           ) : null}

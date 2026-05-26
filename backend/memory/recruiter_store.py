@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS visitors (
     last_seen TEXT NOT NULL,
     device_class TEXT,
     user_agent_snippet TEXT,
-    referrer TEXT
+    referrer TEXT,
+    country_code TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_visitors_last_seen
     ON visitors(last_seen DESC);
@@ -117,6 +118,15 @@ class RecruiterStore:
                 "ALTER TABLE recruiter_view_sessions ADD COLUMN visitor_id TEXT"
             )
 
+        visitor_cols = {
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(visitors)").fetchall()
+        }
+        if visitor_cols and "country_code" not in visitor_cols:
+            self._conn.execute(
+                "ALTER TABLE visitors ADD COLUMN country_code TEXT"
+            )
+
     def record_view(
         self,
         session_id: str | None = None,
@@ -125,6 +135,7 @@ class RecruiterStore:
         device_class: str | None = None,
         user_agent_snippet: str | None = None,
         referrer: str | None = None,
+        country_code: str | None = None,
     ) -> RecruiterViewResult:
         now = datetime.now(timezone.utc).isoformat()
         sid = (session_id or "").strip()
@@ -132,6 +143,9 @@ class RecruiterStore:
         device = _truncate_text(device_class, 32)
         ua = _truncate_text(user_agent_snippet, _UA_SNIPPET_MAX)
         ref = _truncate_text(referrer, 512)
+        country = _truncate_text(country_code, 2)
+        if country:
+            country = country.upper()
 
         with self._lock:
             self._conn.execute(
@@ -150,10 +164,11 @@ class RecruiterStore:
                         """
                         INSERT INTO visitors (
                             visitor_id, first_seen, last_seen,
-                            device_class, user_agent_snippet, referrer
-                        ) VALUES (?, ?, ?, ?, ?, ?)
+                            device_class, user_agent_snippet, referrer,
+                            country_code
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (vid, now, now, device, ua, ref),
+                        (vid, now, now, device, ua, ref, country),
                     )
                     self._conn.execute(
                         "UPDATE recruiter_stats SET unique_views = unique_views + 1 WHERE id = 1"
@@ -166,10 +181,11 @@ class RecruiterStore:
                         SET last_seen = ?,
                             device_class = COALESCE(?, device_class),
                             user_agent_snippet = COALESCE(?, user_agent_snippet),
-                            referrer = COALESCE(?, referrer)
+                            referrer = COALESCE(?, referrer),
+                            country_code = COALESCE(?, country_code)
                         WHERE visitor_id = ?
                         """,
-                        (now, device, ua, ref, vid),
+                        (now, device, ua, ref, country, vid),
                     )
             elif sid:
                 row = self._conn.execute(
@@ -267,7 +283,7 @@ class RecruiterStore:
                 ).fetchone()
 
                 visitor_rows = self._conn.execute(
-                    """SELECT visitor_id, device_class, first_seen, last_seen
+                    """SELECT visitor_id, device_class, country_code, first_seen, last_seen
                        FROM visitors
                        ORDER BY last_seen DESC LIMIT 20"""
                 ).fetchall()
@@ -302,6 +318,7 @@ class RecruiterStore:
             {
                 "visitor_id": _truncate_id(row["visitor_id"]),
                 "device_class": row["device_class"] or "",
+                "country_code": row["country_code"] or "",
                 "first_seen": row["first_seen"],
                 "last_seen": row["last_seen"],
             }
@@ -316,6 +333,7 @@ class RecruiterStore:
                         (row["visitor_id"] or row["session_id"] or "unknown")
                     ),
                     "device_class": "",
+                    "country_code": "",
                     "first_seen": row["first_seen"],
                     "last_seen": row["last_seen"],
                 }
@@ -328,6 +346,7 @@ class RecruiterStore:
                 "session_id": entry["visitor_id"],
                 "visitor_id": entry["visitor_id"],
                 "device_class": entry["device_class"],
+                "country_code": entry["country_code"],
                 "first_seen": entry["first_seen"],
                 "last_seen": entry["last_seen"],
             }

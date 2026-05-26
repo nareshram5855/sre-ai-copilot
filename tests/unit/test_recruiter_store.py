@@ -47,3 +47,23 @@ def test_data_dir_resolves_recruiter_db_path():
 def test_explicit_recruiter_path_overrides_data_dir():
     s = Settings(data_dir="/data", recruiter_sqlite_path="/custom/recruiter.db")
     assert s.recruiter_sqlite_path == "/custom/recruiter.db"
+
+
+def test_record_view_stores_country_code(store):
+    store.record_view(visitor_id="visitor-us", country_code="us")
+    stats = store.get_detailed_stats()
+    assert stats["recent_visitors"][0]["country_code"] == "US"
+
+
+def test_record_view_updates_country_on_return(store):
+    store.record_view(visitor_id="visitor-gb", country_code="GB")
+    store.record_view(visitor_id="visitor-gb", country_code="GB")
+    stats = store.get_detailed_stats()
+    assert stats["recent_visitors"][0]["country_code"] == "GB"
+
+
+def test_record_view_unknown_country_stored_empty(store):
+    store.record_view(visitor_id="visitor-unknown")
+    stats = store.get_detailed_stats()
+    assert stats["recent_visitors"][0]["country_code"] == ""
+

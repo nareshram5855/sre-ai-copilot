@@ -8,12 +8,13 @@ import re
 from typing import AsyncIterator
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.config import get_settings
 from backend.memory.recruiter_store import RecruiterFeedbackEntry, get_recruiter_store
+from backend.utils.client_geo import country_from_request
 from backend.knowledge.profile_ingest import (
     get_skill_match_terms,
     match_companies_in_query,
@@ -489,7 +490,10 @@ def _require_recruiter_store():
 
 
 @router.post("/view")
-def record_recruiter_view(payload: RecruiterViewPayload | None = None) -> dict:
+def record_recruiter_view(
+    request: Request,
+    payload: RecruiterViewPayload | None = None,
+) -> dict:
     """Increment resume page view counters (total + visitor-unique when visitor_id provided)."""
     store = _require_recruiter_store()
     session_id = payload.session_id if payload else None
@@ -500,6 +504,7 @@ def record_recruiter_view(payload: RecruiterViewPayload | None = None) -> dict:
         device_class=payload.device_class if payload else None,
         user_agent_snippet=payload.user_agent_snippet if payload else None,
         referrer=payload.referrer if payload else None,
+        country_code=country_from_request(request),
     )
     return {
         "total_views": result.total_views,

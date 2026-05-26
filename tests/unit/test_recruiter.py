@@ -435,6 +435,40 @@ def test_admin_stats_success(mock_get_settings):
     assert "recent_visitors" in data
     if data["recent_visitors"]:
         assert "device_class" in data["recent_visitors"][0]
+        assert "country_code" in data["recent_visitors"][0]
+
+
+@patch("backend.routers.recruiter.get_settings")
+def test_recruiter_view_records_country_from_cf_header(mock_get_settings):
+    mock_get_settings.return_value.admin_token = "secret-admin"
+    client.post(
+        "/api/v1/recruiter/view",
+        json={"visitor_id": "cf-visitor", "session_id": "cf-sess"},
+        headers={"CF-IPCountry": "DE"},
+    )
+    r = client.get("/api/v1/recruiter/admin/stats?token=secret-admin")
+    assert r.status_code == 200
+    visitors = r.json()["recent_visitors"]
+    assert any(v["country_code"] == "DE" for v in visitors)
+
+
+@patch("backend.routers.recruiter.get_settings")
+def test_recruiter_view_ignores_client_supplied_country(mock_get_settings):
+    mock_get_settings.return_value.admin_token = "secret-admin"
+    client.post(
+        "/api/v1/recruiter/view",
+        json={
+            "visitor_id": "no-spoof",
+            "session_id": "no-spoof-sess",
+            "country_code": "ZZ",
+        },
+    )
+    r = client.get("/api/v1/recruiter/admin/stats?token=secret-admin")
+    assert r.status_code == 200
+    visitors = r.json()["recent_visitors"]
+    match = next(v for v in visitors if v["visitor_id"].startswith("no-spoof"))
+    assert match["country_code"] == ""
+
 
 
 def test_recruiter_feedback_submission():
