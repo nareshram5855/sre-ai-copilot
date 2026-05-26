@@ -11,7 +11,7 @@ export const RESUME_PROFILE = {
   phone: "+1 (737) 224-1812",
   availability: "Available for SRE · Platform · DevOps roles",
   tagline:
-    "8+ years building reliable cloud platforms on AWS & Azure — Kubernetes, GitOps, observability, " +
+    "8 years building reliable cloud platforms on AWS & Azure — Kubernetes, GitOps, observability, " +
     "and AI-assisted automation for enterprise IAM, data, and telecom workloads.",
 };
 
@@ -625,7 +625,7 @@ export const RECRUITER_EMPLOYER_QUICK_ASK = [
 
 /** Key metrics for hero cards on /resume */
 export const RESUME_STATS = [
-  { label: "Experience", value: "8+", sub: "Production SRE & DevOps" },
+  { label: "Experience", value: "8", sub: "Production SRE & DevOps" },
   { label: "Enterprise", value: "6", sub: "Fortune-scale clients" },
   { label: "Certification", value: "AWS", sub: "DevOps Engineer — Pro" },
   { label: "Portfolio", value: "Live", sub: "Personal SRE bot · R&D" },
@@ -636,25 +636,25 @@ export const RESUME_ACHIEVEMENTS = [
   {
     title: "IAM & zero-trust at Citigroup",
     detail:
-      "Migrating Ping Identity stack to AWS EKS with ArgoCD GitOps, Karpenter scaling, and SOX-compliant audit tooling.",
+      "Led migration of PingFederate, PingAccess & PingDirectory from on-prem to AWS EKS. Built SOX-compliant audit tooling, ArgoCD GitOps delivery, and Karpenter node scaling for the CISO org.",
     icon: "shield",
   },
   {
-    title: "GitOps & multi-cloud platforms",
+    title: "Enterprise data platform at Bank of America",
     detail:
-      "Terraform, CDK, Terragrunt across AWS/Azure; Tekton, Harness, Jenkins, GitHub Actions for regulated enterprises.",
+      "Architected workflow-driven loss forecasting platform for GRA regulatory team — multi-tiered distributed compute (Hadoop/Spark), Azure Databricks migration, Kafka event streaming, and OpenShift/AKS CI/CD. Led a cross-functional platform engineering team.",
     icon: "git",
   },
   {
-    title: "Observability & incident automation",
+    title: "30+ app cloud migration at Verizon",
     detail:
-      "Started with DIY shell/Python monitoring (URL health checks, NGINX log browsing, Autosys metrics) before scaling to Prometheus, Grafana, Splunk, Dynatrace, and ELK at Fortune-scale clients.",
+      "Onboarded 30+ on-prem applications to AWS end-to-end for Verizon Smart Family — EKS cluster setup, CDK/Terraform IaC, Jenkins shared libraries, EMR/Spark pipelines, and security-gated CI/CD with Checkov and CrowdStrike.",
     icon: "chart",
   },
   {
-    title: "AI-enabled SRE (this demo)",
+    title: "Terraform blueprints at Toyota TMNA",
     detail:
-      "Built SRE AI Copilot — LangGraph agents, RAG runbooks, Kafka/SSE feeds, human-gated kubectl remediation, audit trail.",
+      "Built reusable Terraform blueprints for data hosting services — Informatica cluster deployments, ETL pipelines on ECS/Fargate, Aurora/RDS provisioning, EFS/EBS lifecycle automation, and Datadog observability across the data platform.",
     icon: "spark",
   },
 ];
@@ -662,9 +662,9 @@ export const RESUME_ACHIEVEMENTS = [
 /** Quantifiable impact bullets — indexed for recruiter RAG */
 export const TECHNICAL_HIGHLIGHTS = [
   {
-    title: "8+ years · AWS DevOps Pro · multi-cloud SRE",
+    title: "8 years · AWS DevOps Pro · multi-cloud SRE",
     detail:
-      "8+ years across Citi, BofA, Verizon, Toyota, and Anthem — AWS DevOps Engineer Professional certified. " +
+      "8 years across Citi, BofA, Verizon, Toyota, and Anthem — AWS DevOps Engineer Professional certified. " +
       "Production Kubernetes on EKS, AKS, and OpenShift; Terraform, CDK, and Terragrunt at Fortune-scale regulated workloads.",
   },
   {
