@@ -510,7 +510,11 @@ def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKE
     if not settings.admin_token or token != settings.admin_token:
         raise HTTPException(status_code=401, detail="Invalid admin token")
     store = _require_recruiter_store()
-    return store.get_detailed_stats()
+    try:
+        return store.get_detailed_stats()
+    except Exception as e:
+        logger.error("Failed to fetch recruiter stats: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to load stats: {str(e)}")
 
 
 @router.post("/feedback")

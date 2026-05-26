@@ -6,7 +6,7 @@ import logging
 import sqlite3
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -130,7 +130,7 @@ class RecruiterStore:
     def get_detailed_stats(self) -> dict[str, Any]:
         """Admin-only: returns rich analytics — views, unique visitors, daily breakdown, recent sessions."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        week_ago = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
 
         with self._lock:
             stats_row = self._conn.execute(
