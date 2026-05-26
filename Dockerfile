@@ -48,6 +48,6 @@ CMD gunicorn backend.main:app \
     --workers 2 \
     --bind "0.0.0.0:${PORT:-8080}" \
     --timeout 120 \
-    --keepalive 5 \
+    --keep-alive 5 \
     --access-logfile - \
     --error-logfile -
