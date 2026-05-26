@@ -515,8 +515,8 @@ def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKE
         )
     if token != cfg.admin_token:
         raise HTTPException(status_code=401, detail="Invalid admin token")
-    store = _require_recruiter_store()
     try:
+        store = _require_recruiter_store()
         logger.info("Fetching recruiter stats...")
         stats = store.get_detailed_stats()
         logger.info("Successfully fetched recruiter stats")
