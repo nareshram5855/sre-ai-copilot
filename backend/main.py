@@ -21,7 +21,7 @@ import logging
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -165,10 +165,26 @@ app.include_router(demo.router)
 # Served only when the React build exists (i.e. in Docker / after npm run build).
 # In local dev, Vite's dev server handles the frontend instead.
 import os as _os
+from fastapi.responses import FileResponse
 _dist = _os.path.join(_os.path.dirname(__file__), "..", "frontend", "dist")
 if _os.path.isdir(_dist):
     from fastapi.staticfiles import StaticFiles
-    app.mount("/", StaticFiles(directory=_dist, html=True), name="spa")
+    
+    # Catch-all route for SPA: serves index.html for any unmatched frontend routes
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        """Serve index.html for any unmatched route (SPA fallback)."""
+        if full_path.startswith("api/"):
+            # If it starts with api/, let it 404 (already matched by routers)
+            raise HTTPException(status_code=404, detail="Not Found")
+        
+        index_path = _os.path.join(_dist, "index.html")
+        if _os.path.exists(index_path):
+            return FileResponse(index_path)
+        raise HTTPException(status_code=404, detail="Not Found")
+    
+    # Mount static assets
+    app.mount("/", StaticFiles(directory=_dist, html=False), name="static")
     logger.info("Serving React SPA from frontend/dist")
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────
