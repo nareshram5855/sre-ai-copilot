@@ -28,8 +28,8 @@ class VoiceSettings(BaseSettings):
         description="Default STT provider: local, google-cloud, azure, web-speech"
     )
     stt_local_model: str = Field(
-        default="whisper-base",
-        description="Local STT model (whisper.cpp or Ollama whisper)"
+        default="base",
+        description="Local Whisper model (tiny, base, small, medium, large, etc.)"
     )
     stt_language: str = Field(
         default="en-US",
@@ -47,8 +47,12 @@ class VoiceSettings(BaseSettings):
 
     # ── TTS (Text-to-Speech) ──────────────────────────────────────────────────
     tts_provider: str = Field(
-        default="local",
-        description="Default TTS provider: local, google-cloud, azure, web"
+        default="edge",
+        description="Default TTS provider: edge (neural), local, google-cloud, azure"
+    )
+    tts_neural_voice: Optional[str] = Field(
+        default=None,
+        description="Neural voice ID override, e.g. en-US-JennyNeural"
     )
     tts_local_backend: str = Field(
         default="pyttsx3",
@@ -63,10 +67,10 @@ class VoiceSettings(BaseSettings):
         description="Default voice gender: male, female, neutral"
     )
     tts_speaking_rate: float = Field(
-        default=1.0,
+        default=0.94,
         ge=0.5,
         le=2.0,
-        description="Default speaking rate"
+        description="Default speaking rate (0.94 = slightly slower, more natural)"
     )
     tts_audio_format: str = Field(
         default="mp3",

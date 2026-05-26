@@ -23,6 +23,7 @@ from backend.voice.models import (
     VoiceHealthResponse, VoiceProviderInfo,
 )
 from backend.voice.base import AudioFormat
+from backend.voice.text_prep import prepare_text_for_speech
 from backend.voice.providers import get_stt_provider, get_tts_provider
 from backend.voice.voice_agent import VoiceAgent
 
@@ -144,9 +145,10 @@ async def synthesize_text(req: TextToSpeechRequest) -> TextToSpeechResponse:
         import base64
         cfg = get_voice_settings()
         tts_provider = get_tts_provider()
-        
+        spoken_text = prepare_text_for_speech(req.text)
+
         audio_bytes = await tts_provider.synthesize(
-            req.text,
+            spoken_text,
             language=req.language,
             gender=req.gender,
             rate=req.rate,

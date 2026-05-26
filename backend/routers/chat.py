@@ -9,10 +9,9 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from backend.agents.chat_agent import ChatAgent, _SYSTEM
 from backend.config import settings
-from backend.memory.session_store import session_store
+from backend.memory.persistence import session_store, triage_dedup_store
 from backend.rag.retriever import retrieve_with_score
 from backend.routers._models import ChatPayload, ChatResponse, ClearSessionResponse
-from backend.routers.alertmanager import _recent_triages
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
@@ -159,7 +158,10 @@ async def chat_stream(payload: ChatPayload) -> StreamingResponse:
 
     async def _incident_status_stream():
         _SEV = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
-        items = sorted(_recent_triages.values(), key=lambda t: (_SEV.get(t.severity, 9), t.triaged_at))
+        items = sorted(
+            triage_dedup_store.list_recent(limit=50),
+            key=lambda t: (_SEV.get(t.severity, 9), t.triaged_at),
+        )
 
         if not items:
             msg = "No open incidents right now — all systems appear healthy."

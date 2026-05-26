@@ -112,18 +112,36 @@ spec:
             - --web.enable-lifecycle
           ports:
             - containerPort: 9090
+              name: http
+          readinessProbe:
+            httpGet: {path: /-/ready, port: 9090}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet: {path: /-/healthy, port: 9090}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
             - name: data
               mountPath: /prometheus
           resources:
-            requests: {memory: 128Mi, cpu: 100m}
-            limits:   {memory: 512Mi, cpu: 500m}
+            requests: {memory: 256Mi, cpu: 200m}
+            limits:   {memory: 768Mi, cpu: 750m}
       volumes:
         - name: config
           configMap:
             name: prometheus-config
+        - name: rules
+          configMap:
+            name: prometheus-synthetic-rules
         - name: data
           emptyDir: {}
 ---

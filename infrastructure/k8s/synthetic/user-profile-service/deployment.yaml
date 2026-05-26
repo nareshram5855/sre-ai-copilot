@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-profile-service
+  namespace: synthetic
+  labels:
+    app: user-profile-service
+    team: identity
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-profile-service
+  template:
+    metadata:
+      labels:
+        app: user-profile-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+        loki.grafana.com/log-format: "json"
+    spec:
+      containers:
+        - name: user-profile-service
+          image: demo-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5000
+              name: http
+          env:
+            - name: SERVICE_NAME
+              value: "user-profile-service"
+            - name: SERVICE_PROFILE
+              value: "user-profile"
+            - name: NAMESPACE
+              value: "synthetic"
+            - name: ENVIRONMENT
+              value: "production"
+            - name: PORT
+              value: "5000"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability.svc.cluster.local:4317"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          resources:
+            requests: {memory: "32Mi", cpu: "10m"}
+            limits:   {memory: "256Mi", cpu: "300m"}
+          readinessProbe:
+            httpGet: {path: /health, port: 5000}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 5000}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-profile-service
+  namespace: synthetic
+spec:
+  selector:
+    app: user-profile-service
+  ports:
+    - port: 5000
+      targetPort: 5000
+      nodePort: 30550
+  type: NodePort

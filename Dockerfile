@@ -1,4 +1,12 @@
-# Production image — FastAPI backend (SRE AI Copilot)
+# ── Stage 1: Build React frontend ────────────────────────────────────────────
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# ── Stage 2: Python runtime ───────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm
 
 WORKDIR /app
@@ -13,17 +21,33 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser
 
-COPY backend/requirements.txt /app/backend/requirements.txt
+# Python deps
+COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --upgrade pip \
-    && pip install -r /app/backend/requirements.txt
+    && pip install -r ./backend/requirements.txt
 
-COPY backend /app/backend
+# Backend source
+COPY backend/ ./backend/
+
+# Built frontend static files
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
+# SQLite data directory (recruiter views, audit log, checkpoints)
+RUN mkdir -p backend/data && chown -R appuser:appuser backend/data
 
 USER appuser
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8080/health || exit 1
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
+# Railway injects $PORT — bind to it, 2 workers to stay within memory limits
+CMD gunicorn backend.main:app \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --workers 2 \
+    --bind "0.0.0.0:${PORT:-8080}" \
+    --timeout 120 \
+    --keepalive 5 \
+    --access-logfile - \
+    --error-logfile -

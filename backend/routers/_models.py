@@ -13,6 +13,8 @@ class HealthResponse(BaseModel):
     status: str
     ollama_model: str
     environment: str
+    observability: Optional[str] = None
+    remediation: Optional[dict] = None
 
 
 class IngestResponse(BaseModel):

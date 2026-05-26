@@ -92,12 +92,11 @@ class RedisSessionStore:
         except Exception as exc:
             logger.error("Redis add_exchange failed for session=%s: %s", session_id, exc)
 
-    def clear(self, session_id: str) -> bool:
+    def clear(self, session_id: str) -> None:
         try:
-            return bool(self._r.delete(self._key(session_id)))
+            self._r.delete(self._key(session_id))
         except Exception as exc:
             logger.error("Redis clear failed for session=%s: %s", session_id, exc)
-            return False
 
     def session_count(self) -> int:
         try:

@@ -1,0 +1,85 @@
+name: CD — Minikube (MacBook)
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_backend_in_cluster:
+        description: Deploy backend container into Minikube (default hybrid host mode)
+        required: false
+        default: false
+        type: boolean
+      skip_synthetic:
+        description: Skip synthetic demo app build (faster deploy)
+        required: false
+        default: false
+        type: boolean
+      strict_backend_smoke:
+        description: Fail smoke test if host backend is not reachable on :8080
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: [develop]
+
+concurrency:
+  group: cd-minikube-mac
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  MINIKUBE_CPUS: "4"
+  MINIKUBE_MEMORY: "8192"
+
+jobs:
+  deploy:
+    name: Deploy to Minikube
+    runs-on: [self-hosted, macOS, minikube]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify toolchain
+        run: |
+          set -euo pipefail
+          command -v minikube >/dev/null
+          command -v kubectl >/dev/null
+          command -v docker >/dev/null
+          minikube version
+          kubectl version --client=true
+          echo "Runner: $(uname -a)"
+          echo "Workspace: ${GITHUB_WORKSPACE}"
+
+      - name: Deploy Minikube stack
+        env:
+          DEPLOY_BACKEND: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_backend_in_cluster && 'true' || 'false' }}
+          SKIP_SYNTHETIC: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_synthetic && 'true' || 'false' }}
+        run: |
+          chmod +x infrastructure/k8s/deploy-all.sh
+          infrastructure/k8s/deploy-all.sh
+
+      - name: Smoke test
+        env:
+          STRICT_BACKEND: ${{ github.event_name == 'workflow_dispatch' && inputs.strict_backend_smoke && 'true' || 'false' }}
+          BACKEND_HEALTH_URL: http://localhost:8080/health
+        run: |
+          chmod +x infrastructure/k8s/smoke-test.sh
+          infrastructure/k8s/smoke-test.sh
+
+      - name: Deploy summary
+        if: always()
+        run: |
+          echo "## Minikube deploy summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Namespace |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Observability | observability |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Kafka | kafka |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ChromaDB | sre-ai |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Redis | default |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Synthetic apps | synthetic |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Hybrid mode: run \`make start-backend\` on the MacBook for API on :8080." >> "$GITHUB_STEP_SUMMARY"
+          kubectl get pods -A 2>/dev/null | grep -E 'observability|kafka|sre-ai|synthetic|redis' >> "$GITHUB_STEP_SUMMARY" || true

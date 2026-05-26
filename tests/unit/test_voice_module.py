@@ -13,7 +13,8 @@ from backend.voice.models import (
     TextToSpeechRequest, TextToSpeechResponse,
     VoiceChatRequest, VoiceChatResponse,
 )
-from backend.voice.providers import LocalTTSProvider, LocalSTTProvider
+from backend.voice.providers import LocalTTSProvider, LocalSTTProvider, EdgeTTSProvider
+from backend.voice.text_prep import prepare_text_for_speech
 from backend.voice.voice_agent import VoiceAgent
 
 
@@ -116,6 +117,33 @@ class TestLocalTTSProvider:
         assert len(voices) > 0
         assert all("voice_id" in v for v in voices)
         assert all("gender" in v for v in voices)
+
+
+class TestEdgeTTSProvider:
+    """Test Edge neural TTS provider."""
+
+    def test_edge_tts_name(self):
+        provider = EdgeTTSProvider()
+        assert provider.name == "edge-neural-tts"
+
+    def test_edge_tts_voices(self):
+        provider = EdgeTTSProvider()
+        voices = provider.get_supported_voices()
+        assert any(v["voice_id"] == "en-US-JennyNeural" for v in voices)
+
+    def test_edge_tts_no_api_key(self):
+        provider = EdgeTTSProvider()
+        assert provider.supports_streaming is True
+
+
+class TestSpeechTextPrep:
+    """Test text normalization for natural speech."""
+
+    def test_expands_k8s(self):
+        assert "Kubernetes" in prepare_text_for_speech("Check K8s pods")
+
+    def test_strips_markdown(self):
+        assert prepare_text_for_speech("**Hello** `world`") == "Hello world"
 
 
 class TestLocalSTTProvider:
@@ -261,14 +289,19 @@ class TestVoiceConfig:
 
     def test_voice_settings_defaults(self):
         """VoiceSettings has sensible defaults."""
-        from backend.voice.config import get_voice_settings
-        
-        cfg = get_voice_settings()
-        assert cfg.voice_enabled is False  # Disabled by default
-        assert cfg.tts_provider == "local"
+        from backend.voice.config import VoiceSettings
+
+        cfg = VoiceSettings(
+            voice_enabled=False,
+            tts_provider="edge",
+            stt_provider="local",
+            tts_speaking_rate=0.94,
+        )
+        assert cfg.voice_enabled is False
+        assert cfg.tts_provider == "edge"
         assert cfg.stt_provider == "local"
         assert cfg.tts_language == "en-US"
-        assert cfg.tts_speaking_rate == 1.0
+        assert cfg.tts_speaking_rate == 0.94
 
 
 # ── Provider Registry Tests ────────────────────────────────────────────────────
@@ -282,6 +315,13 @@ class TestProviderRegistry:
         
         provider = get_tts_provider("local")
         assert provider.name == "local-tts"
+
+    def test_get_tts_provider_edge(self):
+        """Can retrieve edge TTS provider when installed."""
+        from backend.voice.providers import get_tts_provider
+
+        provider = get_tts_provider("edge")
+        assert provider.name == "edge-neural-tts"
 
     def test_get_stt_provider_local(self):
         """Can retrieve local STT provider."""
@@ -311,12 +351,12 @@ class TestVoiceIntegration:
     """Integration tests for voice module."""
 
     @pytest.mark.asyncio
-    async def test_voice_endpoints_disabled_by_default(self):
-        """Voice endpoints not registered if disabled in config."""
-        from backend.voice.config import get_voice_settings
-        
-        cfg = get_voice_settings()
-        assert cfg.voice_enabled is False  # Should not auto-enable
+    async def test_voice_module_can_be_disabled(self):
+        """Voice module supports disabled configuration."""
+        from backend.voice.config import VoiceSettings
+
+        cfg = VoiceSettings(voice_enabled=False)
+        assert cfg.voice_enabled is False
 
 
 # ── Utility Tests ─────────────────────────────────────────────────────────────

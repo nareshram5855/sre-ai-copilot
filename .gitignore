@@ -34,3 +34,10 @@ infrastructure/terraform/*.tfvars
 
 # macOS
 .DS_Store
+
+# Runtime / generated
+.backend.pid
+.observability-pf.pid
+.coverage
+backend/data/
+synthetic/reports/

@@ -1,0 +1,203 @@
+# OpenTelemetry Collector — receives OTLP traces from apps,
+# exports metrics to Prometheus, forwards logs to Loki.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: observability
+data:
+  otel-collector.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+      # Pull Prometheus metrics from apps (alternative scrape path)
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: otel-scrape-synthetic
+              scrape_interval: 15s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names: [synthetic]
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: "true"
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
+
+    processors:
+      batch:
+        send_batch_size: 512
+        timeout: 5s
+
+      # Add resource attributes to all telemetry
+      resource:
+        attributes:
+          - key: deployment.environment
+            value: production
+            action: upsert
+          - key: k8s.cluster.name
+            value: minikube
+            action: upsert
+
+      # Detect anomalous spans (latency > 2s → flag as slow)
+      transform/flag_slow_spans:
+        trace_statements:
+          - context: span
+            statements:
+              - set(attributes["sre.slow_span"], "true") where end_time_unix_nano - start_time_unix_nano > 2000000000
+              - set(status.code, STATUS_CODE_ERROR) where end_time_unix_nano - start_time_unix_nano > 10000000000
+
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 256
+
+    exporters:
+      # Export traces → stdout (Promtail will pick these up as structured logs)
+      debug:
+        verbosity: basic
+        sampling_initial:     5
+        sampling_thereafter: 20
+
+      # Export metrics to Prometheus pull endpoint
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: otel
+
+      # Forward logs to Loki
+      loki:
+        endpoint: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
+        default_labels_enabled:
+          exporter: true
+          job:      true
+          instance: true
+          level:    true
+
+    service:
+      pipelines:
+        traces:
+          receivers:  [otlp]
+          processors: [memory_limiter, resource, transform/flag_slow_spans, batch]
+          exporters:  [debug]
+
+        metrics:
+          receivers:  [otlp, prometheus]
+          processors: [memory_limiter, resource, batch]
+          exporters:  [prometheus]
+
+        logs:
+          receivers:  [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters:  [loki]
+
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/proxy, services, endpoints, pods]
+    verbs: [get, list, watch]
+  - nonResourceURLs: [/metrics]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: observability
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "8889"
+        prometheus.io/path:   "/metrics"
+    spec:
+      serviceAccountName: otel-collector
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.111.0
+          args: [--config=/etc/otel/otel-collector.yaml]
+          ports:
+            - containerPort: 4317  # OTLP gRPC
+              name: otlp-grpc
+            - containerPort: 4318  # OTLP HTTP
+              name: otlp-http
+            - containerPort: 8888  # Collector self-metrics
+              name: metrics
+            - containerPort: 8889  # Prometheus export endpoint
+              name: prom-export
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+          resources:
+            requests: {memory: 128Mi, cpu: 100m}
+            limits:   {memory: 512Mi, cpu: 500m}
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: observability
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+    - name: metrics
+      port: 8888
+      targetPort: 8888
+    - name: prom-export
+      port: 8889
+      targetPort: 8889
+  type: ClusterIP

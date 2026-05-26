@@ -4,6 +4,7 @@ import axios from "axios";  // kept for DELETE /chat/:session_id (clear session)
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { VoiceButton } from "./VoiceButton";
+import { speakText, stopSpeaking } from "../utils/speechUtils";
 
 const SESSION_ID = `session-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -25,6 +26,7 @@ export function ChatWidget() {
   const [loading, setLoading] = useState(false);
   const [unread, setUnread] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -50,9 +52,11 @@ export function ChatWidget() {
     setMessages([{ role: "assistant", content: "Session cleared. What's next?", sources: [] }]);
   }, []);
 
-  const sendQuestion = useCallback(async (question) => {
+  useEffect(() => () => stopSpeaking(), []);
+
+  const sendQuestion = useCallback(async (question, { speakResponse = false } = {}) => {
     const trimmed = question.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || loading) return "";
 
     setMessages((p) => [...p, { role: "user", content: trimmed, sources: [] }]);
     setInput("");
@@ -72,12 +76,18 @@ export function ChatWidget() {
       reactSteps: useReact ? [] : undefined,
     }]);
 
-    const appendToken = (token) => setMessages((p) => {
-      const updated = [...p];
-      const last = updated[updated.length - 1];
-      updated[updated.length - 1] = { ...last, content: last.content + token };
-      return updated;
-    });
+    let assistantText = "";
+    let streamOk = false;
+
+    const appendToken = (token) => {
+      assistantText += token;
+      setMessages((p) => {
+        const updated = [...p];
+        const last = updated[updated.length - 1];
+        updated[updated.length - 1] = { ...last, content: last.content + token };
+        return updated;
+      });
+    };
 
     const pushReactStep = (step) => setMessages((p) => {
       const updated = [...p];
@@ -148,6 +158,7 @@ export function ChatWidget() {
           } catch (_) {}
         }
       }
+      streamOk = true;
     } catch (err) {
       setMessages((p) => {
         const updated = [...p];
@@ -162,12 +173,25 @@ export function ChatWidget() {
     } finally {
       setLoading(false);
     }
+
+    if (speakResponse && streamOk && assistantText.trim()) {
+      setIsSpeaking(true);
+      try {
+        await speakText(assistantText);
+      } catch (_) {
+        /* TTS is best-effort */
+      } finally {
+        setIsSpeaking(false);
+      }
+    }
+
+    return assistantText;
   }, [agentMode, loading, uiState]);
 
   const handleVoiceInput = useCallback((voiceData) => {
     const { userText } = voiceData;
     if (!userText?.trim()) return;
-    sendQuestion(userText);
+    sendQuestion(userText, { speakResponse: true });
   }, [sendQuestion]);
 
   async function send(e) {
@@ -339,9 +363,10 @@ export function ChatWidget() {
           <div className="px-3 py-3 border-t border-sre-border flex-shrink-0 space-y-3">
             <VoiceButton 
               onVoiceInput={handleVoiceInput}
-              disabled={loading}
+              disabled={loading || isSpeaking}
               sessionId={SESSION_ID}
               enabled={voiceEnabled}
+              isSpeaking={isSpeaking}
             />
             <form onSubmit={send} className="flex gap-2">
               <input

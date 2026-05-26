@@ -125,7 +125,13 @@ def ingest_all() -> dict[str, int]:
     """Ingest all registered knowledge domains. Safe to call repeatedly.
     Domains are driven by config.knowledge_collections — adding a new domain
     requires only a config entry and a new knowledge/ subdirectory."""
+    # Profile uses resume_content.py — see backend/knowledge/profile_ingest.py
+    _filesystem_domains = {
+        domain: name
+        for domain, name in settings.knowledge_collections.items()
+        if domain != "profile"
+    }
     results = {}
-    for domain, collection_name in settings.knowledge_collections.items():
+    for domain, collection_name in _filesystem_domains.items():
         results[domain] = ingest_directory(collection_name, domain)
     return results

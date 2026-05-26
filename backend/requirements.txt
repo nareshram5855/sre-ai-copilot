@@ -14,6 +14,7 @@ langchain-chroma~=0.1.4
 # LLM providers — imported lazily (only loaded when that tier is used)
 langchain-anthropic~=0.3.3         # Claude Haiku (ADVANCED) + Sonnet (PREMIUM)
 langchain-google-genai~=2.0.7      # Gemini Flash (STANDARD)
+google-genai>=2.0.0                # Direct Gemini SDK — recruiter bot
 
 # Vector store
 chromadb~=0.5.20
@@ -41,5 +42,12 @@ langgraph-checkpoint~=2.0.26       # MemorySaver for cross-API-call state persis
 # Kubernetes integration (Phase 3)
 kubernetes~=31.0.0
 pytest-timeout~=0.5
+
+# Event bus (Kafka — optional, enable with KAFKA_ENABLED=true)
+aiokafka~=0.12.0
+
+# Persistence (Phase 3 — optional Redis; SQLite checkpoints work without Redis)
+redis~=5.2.1
+langgraph-checkpoint-sqlite~=2.0.26
 
 # Voice module deps → backend/requirements-voice.txt (optional)

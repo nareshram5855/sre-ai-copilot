@@ -91,6 +91,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
 from backend.config import settings
+from backend.memory.audit_store import log_execution_audit
 
 logger = logging.getLogger(__name__)
 
@@ -370,6 +371,18 @@ TOOL_REGISTRY: dict[str, tuple[callable, bool]] = {
     "scale":           (_tool_scale,           True),
     "delete_pod":      (_tool_delete_pod,      True),
 }
+
+
+# ── Public accessor used by routers + frontend (single source of truth) ──────
+
+def list_write_actions() -> list[str]:
+    """Return tool names that require human approval before execution."""
+    return [name for name, (_fn, requires_approval) in TOOL_REGISTRY.items() if requires_approval]
+
+
+def list_read_actions() -> list[str]:
+    """Return tool names that are auto-approved (read-only)."""
+    return [name for name, (_fn, requires_approval) in TOOL_REGISTRY.items() if not requires_approval]
 
 
 # ── LLM prompt ────────────────────────────────────────────────────────────────
@@ -1071,11 +1084,25 @@ def execute_read(state: ExecutorState) -> dict:
 
     if fn is None:
         observation = f"ERROR: unknown tool '{action}'"
+        err = observation
     else:
+        err = ""
         try:
             observation = fn(**args)
         except Exception as e:
             observation = f"ERROR: {e}"
+            err = str(e)
+
+    log_execution_audit(
+        execution_id=state["execution_id"],
+        incident_id=state.get("incident_id", ""),
+        action_type="tool_read",
+        tool_name=action,
+        command_details={"action": action, "args": args},
+        status="error" if err else "success",
+        error=err,
+        approval_required=False,
+    )
 
     step = {
         "thought":     state["last_thought"],
@@ -1105,11 +1132,26 @@ def execute_write(state: ExecutorState) -> dict:
 
     if fn is None:
         observation = f"ERROR: unknown tool '{action}'"
+        err = observation
     else:
+        err = ""
         try:
             observation = fn(**args)
         except Exception as e:
             observation = f"ERROR: {e}"
+            err = str(e)
+
+    log_execution_audit(
+        execution_id=state["execution_id"],
+        incident_id=state.get("incident_id", ""),
+        action_type="tool_write",
+        tool_name=action,
+        command_details={"action": action, "args": args},
+        status="error" if err else "success",
+        error=err,
+        approval_required=True,
+        approved_by="engineer",
+    )
 
     step = {
         "thought":     state["last_thought"],
@@ -1206,7 +1248,7 @@ def _format_scratchpad(steps: list[dict]) -> str:
 
 # ── Build the graph ───────────────────────────────────────────────────────────
 
-def _build_graph() -> Any:
+def _build_graph(checkpointer: Any) -> Any:
     builder = StateGraph(ExecutorState)
 
     # Register nodes
@@ -1242,18 +1284,32 @@ def _build_graph() -> Any:
     # Write loops back to reason (after interrupt is cleared)
     builder.add_edge("execute_write", "reason")
 
-    # MemorySaver: checkpoints state at every node boundary.
+    # Checkpointer: checkpoints state at every node boundary.
     # interrupt_before: graph pauses BEFORE execute_write, saves state,
     # returns control to caller. Resume with graph.invoke(None, same_config).
-    checkpointer = MemorySaver()
     return builder.compile(
         checkpointer=checkpointer,
         interrupt_before=["execute_write"],
     )
 
 
-# Module-level compiled graph (shared across all requests)
-_graph = _build_graph()
+_graph: Any | None = None
+
+
+def init_graph(checkpointer: Any | None = None) -> None:
+    """Build or rebuild the compiled executor graph (called from persistence init)."""
+    global _graph
+    if checkpointer is None:
+        from langgraph.checkpoint.memory import MemorySaver
+        checkpointer = MemorySaver()
+    _graph = _build_graph(checkpointer)
+    logger.info("ExecutorAgent graph initialized with %s checkpointer", type(checkpointer).__name__)
+
+
+def _get_graph() -> Any:
+    if _graph is None:
+        init_graph()
+    return _graph
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -1308,19 +1364,50 @@ class ExecutorAgent:
             "category":   _classify_alert_category(alert_name, "", triage_summary),
         })
 
+        log_execution_audit(
+            execution_id=execution_id,
+            incident_id=incident_id,
+            action_type="execution_start",
+            tool_name="",
+            command_details={
+                "alert_name": alert_name,
+                "namespace": namespace,
+                "triage_summary": triage_summary[:500],
+            },
+            status="started",
+        )
+
         # Run the graph in a background thread so the HTTP handler returns immediately.
         # The SSE endpoint connects to the queue while the graph is still running.
         config["recursion_limit"] = (MAX_STEPS * 2) + 10
 
         def _run():
             try:
-                _graph.invoke(initial_state, config=config)
+                _get_graph().invoke(initial_state, config=config)
             except Exception as exc:
                 logger.exception("ExecutorAgent graph error: %s", exc)
                 _push_event(execution_id, "error", {"message": str(exc)})
+                log_execution_audit(
+                    execution_id=execution_id,
+                    incident_id=incident_id,
+                    action_type="execution_error",
+                    status="error",
+                    error=str(exc),
+                )
             finally:
                 snapshot = self._snapshot(execution_id)
                 status = snapshot.get("status", "failed") if snapshot else "failed"
+                if snapshot and snapshot.get("status") == "waiting_approval":
+                    pending = snapshot.get("pending_action") or {}
+                    log_execution_audit(
+                        execution_id=execution_id,
+                        incident_id=incident_id,
+                        action_type="approval_required",
+                        tool_name=pending.get("action", ""),
+                        command_details=pending,
+                        status="pending",
+                        approval_required=True,
+                    )
                 _maybe_learn_from_execution(snapshot)
                 if status not in ("waiting_approval",):
                     _close_stream(execution_id)
@@ -1335,7 +1422,7 @@ class ExecutorAgent:
         Passing None as input tells LangGraph: "continue from checkpoint."
         """
         config = {"configurable": {"thread_id": execution_id}}
-        graph_state = _graph.get_state(config)
+        graph_state = _get_graph().get_state(config)
 
         if not graph_state:
             raise ValueError(f"No state found for execution_id={execution_id}")
@@ -1348,18 +1435,46 @@ class ExecutorAgent:
         # Recreate queue (start() closes it unless waiting_approval)
         _event_queues[execution_id] = queue.Queue()
         _push_event(execution_id, "approved", {"action": next_action, "args": next_args})
+        log_execution_audit(
+            execution_id=execution_id,
+            incident_id=state_vals.get("incident_id", ""),
+            action_type="approval_granted",
+            tool_name=next_action,
+            command_details={"action": next_action, "args": next_args},
+            status="approved",
+            approval_required=True,
+            approved_by="engineer",
+        )
 
         # Run resume in background thread so HTTP returns immediately
         config["recursion_limit"] = (MAX_STEPS * 2) + 10
 
         def _resume():
             try:
-                _graph.invoke(None, config=config)
+                _get_graph().invoke(None, config=config)
             except Exception as exc:
                 logger.exception("ExecutorAgent resume error: %s", exc)
                 _push_event(execution_id, "error", {"message": str(exc)})
+                log_execution_audit(
+                    execution_id=execution_id,
+                    incident_id=state_vals.get("incident_id", ""),
+                    action_type="execution_error",
+                    status="error",
+                    error=str(exc),
+                )
             finally:
                 snapshot = self._snapshot(execution_id)
+                if snapshot and snapshot.get("status") == "waiting_approval":
+                    pending = snapshot.get("pending_action") or {}
+                    log_execution_audit(
+                        execution_id=execution_id,
+                        incident_id=state_vals.get("incident_id", ""),
+                        action_type="approval_required",
+                        tool_name=pending.get("action", ""),
+                        command_details=pending,
+                        status="pending",
+                        approval_required=True,
+                    )
                 _maybe_learn_from_execution(snapshot)
                 _close_stream(execution_id)
 
@@ -1377,7 +1492,7 @@ class ExecutorAgent:
 
     def _snapshot(self, execution_id: str) -> dict | None:
         config = {"configurable": {"thread_id": execution_id}}
-        snapshot = _graph.get_state(config)
+        snapshot = _get_graph().get_state(config)
         if not snapshot or not snapshot.values:
             return None
 

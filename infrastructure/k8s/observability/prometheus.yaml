@@ -1,0 +1,216 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/proxy, services, endpoints, pods]
+    verbs: [get, list, watch]
+  - nonResourceURLs: [/metrics]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: observability
+---
+# Prometheus — scrapes /metrics from all pods annotated with
+#   prometheus.io/scrape: "true"
+#   prometheus.io/port:  "<port>"
+#   prometheus.io/path:  "/metrics"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: observability
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval:     15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: minikube
+        env: production
+
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    scrape_configs:
+      # Scrape Prometheus itself
+      - job_name: prometheus
+        static_configs:
+          - targets: [localhost:9090]
+
+      # Scrape all annotated pods across all namespaces
+      - job_name: kubernetes-pods
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: kubernetes_pod_name
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: service
+
+      # OTel Collector Prometheus metrics
+      - job_name: otel-collector
+        static_configs:
+          - targets: [otel-collector.observability:8889]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-synthetic-rules
+  namespace: observability
+data:
+  synthetic.yml: |
+    groups:
+      - name: synthetic.demo
+        interval: 30s
+        rules:
+          - alert: SyntheticHighErrorRate
+            expr: |
+              sum by (service) (rate(http_errors_total{kubernetes_namespace="synthetic"}[5m])) > 0.5
+            for: 2m
+            labels:
+              severity: critical
+              team: sre
+            annotations:
+              summary: "High error rate on {{ $labels.service }}"
+              description: "{{ $labels.service }} error rate exceeds 0.5/s for 2 minutes."
+
+          - alert: SyntheticHighLatency
+            expr: |
+              histogram_quantile(0.99,
+                sum by (service, le) (rate(http_request_duration_ms_bucket{kubernetes_namespace="synthetic"}[5m]))
+              ) > 2000
+            for: 2m
+            labels:
+              severity: critical
+              team: sre
+            annotations:
+              summary: "High P99 latency on {{ $labels.service }}"
+              description: "{{ $labels.service }} P99 latency exceeds 2000ms."
+
+          - alert: SyntheticHighHeap
+            expr: |
+              memory_heap_bytes{kubernetes_namespace="synthetic"} > 100000000
+            for: 1m
+            labels:
+              severity: warning
+              team: sre
+            annotations:
+              summary: "Heap pressure on {{ $labels.service }}"
+              description: "{{ $labels.service }} heap exceeds 100MB — OOM risk."
+
+          - alert: SyntheticRateLimitStorm
+            expr: |
+              sum by (service) (rate(rate_limit_exceeded_total{kubernetes_namespace="synthetic"}[2m])) > 1
+            for: 1m
+            labels:
+              severity: warning
+              team: sre
+            annotations:
+              summary: "Rate limit storm on {{ $labels.service }}"
+              description: "{{ $labels.service }} returning sustained 429 responses."
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.54.1
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=1d
+            - --storage.tsdb.path=/prometheus
+            - --web.enable-lifecycle
+          ports:
+            - containerPort: 9090
+              name: http
+          readinessProbe:
+            httpGet: {path: /-/ready, port: 9090}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /-/healthy, port: 9090}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
+            - name: data
+              mountPath: /prometheus
+          resources:
+            requests: {memory: 128Mi, cpu: 100m}
+            limits:   {memory: 512Mi, cpu: 500m}
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: rules
+          configMap:
+            name: prometheus-synthetic-rules
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: observability
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090
+  type: NodePort

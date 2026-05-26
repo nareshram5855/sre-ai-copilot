@@ -97,8 +97,8 @@ class TestChatEndpoint:
         assert "_meta" not in resp.json()
 
     def test_too_short_question_returns_422(self, client):
-        resp = client.post("/api/v1/chat", json={"question": "hi"})  # min_length=3 allows "hi" (2 chars)
-        # "hi" = 2 chars, min_length=3 → 422; "ok " = 3 chars → passes
+        # min_length=1; empty string must fail validation
+        resp = client.post("/api/v1/chat", json={"question": ""})
         assert resp.status_code == 422
 
     def test_missing_question_returns_422(self, client):

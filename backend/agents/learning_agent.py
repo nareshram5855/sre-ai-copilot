@@ -174,13 +174,22 @@ class LearningAgent(BaseAgent):
     def _count_prior_resolutions(self, alert_name: str, namespace: str) -> int:
         collection = settings.knowledge_collections["resolved_incidents"]
         query = f"{alert_name} {namespace} resolution"
-        hits = retrieve_with_score(query, collection, k=10)
+        try:
+            hits = retrieve_with_score(query, collection, k=10)
+        except Exception:
+            return 0
         count = 0
         for doc, _distance in hits:
             meta = doc.metadata or {}
             if meta.get("alert_name") == alert_name and meta.get("namespace") == namespace:
                 count += 1
         return count
+
+    def count_prior_resolutions(self, alert_name: str, namespace: str) -> int:
+        """Public accessor used by /incidents/{id}/resolve and frontend hint."""
+        if not alert_name:
+            return 0
+        return self._count_prior_resolutions(alert_name, namespace)
 
     def _maybe_promote_runbook(
         self,

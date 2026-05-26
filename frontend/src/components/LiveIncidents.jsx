@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
-import { Activity, ChevronDown, ChevronUp, RefreshCw, Copy, Check, TriangleAlert, Zap } from "lucide-react";
+import {
+  Activity, ChevronDown, ChevronUp, RefreshCw, Copy, Check,
+  TriangleAlert, Zap, CheckCircle, Loader2, BookOpen,
+} from "lucide-react";
 import axios from "axios";
 import { ExecutionDrawer } from "./ExecutionDrawer.jsx";
+import { authHeaders } from "../config/api.js";
 
 const SEV_STYLES = {
   P1: {
@@ -48,14 +52,35 @@ function CopyBtn({ text }) {
   );
 }
 
-export function LiveIncidents() {
+function incidentKey(t) {
+  return `${t.alert_name}:${t.namespace}`;
+}
+
+export function LiveIncidents({ initialIncidentKey = null, onOpenAudit = null }) {
   const [all, setAll] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [loading, setLoading] = useState(false);
   const [lastFetch, setLastFetch] = useState(null);
+  const [streamLive, setStreamLive] = useState(false);
   const [nsFilter, setNsFilter] = useState("all");
   const [sevFilter, setSevFilter] = useState("all");
-  const [execIncident, setExecIncident] = useState(null);   // incident passed to drawer
+  const [execIncident, setExecIncident] = useState(null);
+  const [resolving, setResolving] = useState({});      // key → bool
+  const [resolved, setResolved] = useState({});        // key → { prior_resolutions, learning }
+
+  const upsertIncident = (incident) => {
+    setAll((prev) => {
+      const key = incidentKey(incident);
+      const idx = prev.findIndex((t) => incidentKey(t) === key);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = incident;
+        return next;
+      }
+      return [incident, ...prev].slice(0, 20);
+    });
+    setLastFetch(new Date());
+  };
 
   async function fetchTriages() {
     setLoading(true);
@@ -69,9 +94,67 @@ export function LiveIncidents() {
 
   useEffect(() => {
     fetchTriages();
-    const id = setInterval(fetchTriages, 15_000);
-    return () => clearInterval(id);
+
+    let es;
+    try {
+      es = new EventSource("/api/v1/events/incidents/stream");
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.type === "connected") {
+            setStreamLive(true);
+            return;
+          }
+          if (data.type === "heartbeat") return;
+          if (data.type === "incident" && data.incident) {
+            upsertIncident(data.incident);
+          }
+        } catch (_) {}
+      };
+      es.onerror = () => setStreamLive(false);
+    } catch (_) {
+      setStreamLive(false);
+    }
+
+    const id = setInterval(fetchTriages, 60_000);
+    return () => {
+      es?.close();
+      clearInterval(id);
+    };
   }, []);
+
+  // Deep-link: auto-expand and (optionally) auto-open drawer for ?incident=key
+  useEffect(() => {
+    if (!initialIncidentKey || all.length === 0) return;
+    const idx = all.findIndex((t) => incidentKey(t) === initialIncidentKey);
+    if (idx >= 0) {
+      setExpanded(idx);
+    }
+  }, [initialIncidentKey, all]);
+
+  async function markResolved(t) {
+    const key = incidentKey(t);
+    setResolving((p) => ({ ...p, [key]: true }));
+    try {
+      const { data } = await axios.post(
+        `/api/v1/incidents/${encodeURIComponent(key)}/resolve`,
+        {
+          outcome: "resolved",
+          alert_name: t.alert_name,
+          namespace: t.namespace,
+          final_summary: `Manually marked resolved by engineer. Suggested fix: ${t.suggested_fix || "n/a"}`,
+          triage_summary: t.summary || "",
+          servicenow_number: t.servicenow_number || "",
+        },
+        { headers: authHeaders() },
+      );
+      setResolved((p) => ({ ...p, [key]: data }));
+    } catch (e) {
+      setResolved((p) => ({ ...p, [key]: { error: e.response?.data?.detail || e.message } }));
+    } finally {
+      setResolving((p) => ({ ...p, [key]: false }));
+    }
+  }
 
   // Unique namespaces for filter tabs
   const namespaces = ["all", ...Array.from(new Set(all.map((t) => t.namespace))).sort()];
@@ -104,6 +187,13 @@ export function LiveIncidents() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+            streamLive
+              ? "text-emerald-400 border-emerald-800/50 bg-emerald-950/30"
+              : "text-gray-500 border-sre-border bg-sre-bg"
+          }`}>
+            {streamLive ? "Live stream" : "Polling 60s"}
+          </span>
           {lastFetch && (
             <span className="text-xs text-gray-600">updated {age(lastFetch.toISOString())}</span>
           )}
@@ -157,6 +247,7 @@ export function LiveIncidents() {
         <ExecutionDrawer
           incident={execIncident}
           onClose={() => setExecIncident(null)}
+          onOpenAudit={onOpenAudit}
         />
       )}
 
@@ -173,6 +264,8 @@ export function LiveIncidents() {
           filtered.map((t, i) => {
             const s = getSev(t.severity);
             const isOpen = expanded === i;
+            const key = incidentKey(t);
+            const resolveResult = resolved[key];
             return (
               <div key={i} className={`border-l-4 ${s.card} ${s.ring}`} style={{ borderLeftColor: undefined }}>
                 {/* Row */}
@@ -190,8 +283,20 @@ export function LiveIncidents() {
 
                   {/* Fire count */}
                   {t.fire_count > 1 && (
-                    <span className="text-xs text-gray-500 flex-shrink-0 bg-sre-bg rounded px-1.5 py-0.5">
+                    <span className="text-xs text-gray-500 flex-shrink-0 bg-sre-bg rounded px-1.5 py-0.5" title={`Fired ${t.fire_count} times`}>
                       ×{t.fire_count}
+                    </span>
+                  )}
+
+                  {/* Integration badges */}
+                  {t.servicenow_number && (
+                    <span className="text-[10px] text-blue-300 bg-blue-900/30 border border-blue-800/40 rounded px-1.5 flex-shrink-0 font-mono" title="ServiceNow incident">
+                      {t.servicenow_number}
+                    </span>
+                  )}
+                  {t.pagerduty_triggered && (
+                    <span className="text-[10px] text-orange-300 bg-orange-900/30 border border-orange-800/40 rounded px-1.5 flex-shrink-0" title="PagerDuty triggered">
+                      PD
                     </span>
                   )}
 
@@ -200,6 +305,19 @@ export function LiveIncidents() {
                     <span className="flex items-center gap-1 text-xs text-red-400 flex-shrink-0" title="Escalation required">
                       <TriangleAlert size={11} /> Escalate
                     </span>
+                  )}
+
+                  {/* Mark Resolved button */}
+                  {!resolveResult?.outcome && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); markResolved(t); }}
+                      disabled={resolving[key]}
+                      className="flex items-center gap-1 text-xs bg-emerald-600/15 hover:bg-emerald-600/30 border border-emerald-600/30 text-emerald-300 px-2 py-0.5 rounded-md transition-colors flex-shrink-0 disabled:opacity-50"
+                      title="Mark resolved + teach the system (writes to learning RAG)"
+                    >
+                      {resolving[key] ? <Loader2 size={10} className="animate-spin" /> : <CheckCircle size={10} />}
+                      Resolve
+                    </button>
                   )}
 
                   {/* Execute Fix button */}
@@ -219,6 +337,27 @@ export function LiveIncidents() {
 
                   {isOpen ? <ChevronUp size={13} className="text-gray-500" /> : <ChevronDown size={13} className="text-gray-500" />}
                 </button>
+
+                {/* Inline resolve feedback */}
+                {resolveResult && !resolveResult.error && (
+                  <div className="mx-4 mb-2 mt-1 text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-800/40 rounded-md px-3 py-2 flex items-center gap-2">
+                    <BookOpen size={11} />
+                    <span>
+                      Marked resolved.
+                      {resolveResult.learning?.ingested ? " Learning ingested." : ` ${resolveResult.learning?.reason || "Learning skipped."}`}
+                      {resolveResult.prior_resolutions > 0 && (
+                        <> Learned from <strong>{resolveResult.prior_resolutions}</strong> prior resolution{resolveResult.prior_resolutions === 1 ? "" : "s"}.</>
+                      )}
+                      {resolveResult.side_effects?.servicenow_attached && " RCA attached to ServiceNow."}
+                      {resolveResult.side_effects?.pagerduty_resolved && " PagerDuty resolved."}
+                    </span>
+                  </div>
+                )}
+                {resolveResult?.error && (
+                  <div className="mx-4 mb-2 mt-1 text-xs text-red-300 bg-red-950/40 border border-red-800/40 rounded-md px-3 py-2">
+                    Resolve failed: {resolveResult.error}
+                  </div>
+                )}
 
                 {/* Expanded detail */}
                 {isOpen && (
@@ -247,11 +386,13 @@ export function LiveIncidents() {
                     </div>
 
                     {/* Meta */}
-                    <div className="flex gap-3 text-xs text-gray-600 pt-1">
+                    <div className="flex gap-3 text-xs text-gray-600 pt-1 flex-wrap">
                       <span>LLM: {t.llm_tier}</span>
                       <span>·</span>
                       <span>Triaged {age(t.triaged_at)}</span>
                       {t.fire_count > 1 && <><span>·</span><span>Fired {t.fire_count}×</span></>}
+                      {t.servicenow_number && <><span>·</span><span>ServiceNow {t.servicenow_number}</span></>}
+                      {t.pagerduty_triggered && <><span>·</span><span>PagerDuty paged</span></>}
                     </div>
                   </div>
                 )}

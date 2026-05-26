@@ -13,7 +13,8 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from backend.agents.base import BaseAgent
 from backend.config import settings
-from backend.memory.session_store import InMemorySessionStore, session_store as _default_store
+from backend.memory.session_store import InMemorySessionStore
+from backend.memory.persistence import session_store as _default_store
 
 _SYSTEM = """You are an SRE on-call assistant helping engineers with Kubernetes, cloud infrastructure, and DevOps operations.
 

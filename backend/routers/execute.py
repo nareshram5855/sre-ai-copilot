@@ -12,10 +12,12 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from backend.memory.audit_store import log_execution_audit
+from backend.routers._security import require_api_key
 from backend.routers._shell_security import check_command, get_cwd, update_cwd
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ class ExecuteRequest(BaseModel):
     full_mode: bool = False
 
 
-@router.post("/chat/execute")
+@router.post("/chat/execute", dependencies=[Depends(require_api_key)])
 async def execute_command(body: ExecuteRequest) -> StreamingResponse:
     """
     Execute a command and stream stdout/stderr as SSE.
@@ -50,6 +52,14 @@ async def execute_command(body: ExecuteRequest) -> StreamingResponse:
     async def _stream():
         allowed, reason = check_command(command, body.full_mode)
         if not allowed:
+            log_execution_audit(
+                execution_id=session_id,
+                action_type="shell_execute",
+                tool_name="shell",
+                command_details={"command": command, "full_mode": body.full_mode},
+                status="denied",
+                error=reason,
+            )
             yield f"data: {json.dumps({'type': 'error', 'message': reason})}\n\n"
             return
 
@@ -106,6 +116,14 @@ async def execute_command(body: ExecuteRequest) -> StreamingResponse:
                 update_cwd(session_id, command, proc.returncode, cwd or "")
 
             yield f"data: {json.dumps({'type': 'done', 'exit_code': proc.returncode})}\n\n"
+            log_execution_audit(
+                execution_id=session_id,
+                action_type="shell_execute",
+                tool_name="shell",
+                command_details={"command": command, "full_mode": body.full_mode, "cwd": cwd or ""},
+                status="success" if proc.returncode == 0 else "error",
+                error="" if proc.returncode == 0 else f"exit_code={proc.returncode}",
+            )
             logger.info("EXECUTE done exit=%d cmd=%r", proc.returncode, command)
 
         except FileNotFoundError:

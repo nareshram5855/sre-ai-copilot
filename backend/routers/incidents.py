@@ -8,15 +8,25 @@ Endpoints:
   GET  /api/v1/incidents/{id}/execution/{exec_id} → Poll execution state + scratchpad
   POST /api/v1/incidents/{id}/resolve              → Mark outcome + trigger learning
 """
-from fastapi import APIRouter, HTTPException
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.agents.executor_agent import executor_agent, stream_execution_events
+from backend.agents.executor_agent import (
+    executor_agent,
+    list_read_actions,
+    list_write_actions,
+    stream_execution_events,
+)
 from backend.agents.learning_agent import learning_agent
 from backend.agents.supervisor_agent import supervisor_agent
-from backend.routers.alertmanager import get_fire_count
+from backend.integrations import pagerduty, servicenow
+from backend.routers._security import require_api_key
+from backend.routers.alertmanager import get_fire_count, get_recent_triage
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["incidents"])
 
 
@@ -53,7 +63,7 @@ class ExecuteRequest(BaseModel):
     triage_summary: str
 
 
-@router.post("/api/v1/incidents/{incident_id}/execute")
+@router.post("/api/v1/incidents/{incident_id}/execute", dependencies=[Depends(require_api_key)])
 def start_execution(incident_id: str, body: ExecuteRequest) -> dict:
     """
     Start an autonomous remediation run.
@@ -79,7 +89,7 @@ def start_execution(incident_id: str, body: ExecuteRequest) -> dict:
     return result
 
 
-@router.post("/api/v1/incidents/{incident_id}/approve/{execution_id}")
+@router.post("/api/v1/incidents/{incident_id}/approve/{execution_id}", dependencies=[Depends(require_api_key)])
 def approve_action(incident_id: str, execution_id: str) -> dict:
     """
     Resume a paused execution after human approval.
@@ -150,36 +160,168 @@ class ResolveRequest(BaseModel):
     triage_summary: str = ""
     scratchpad: list[dict] = Field(default_factory=list)
     execution_id: str = ""
+    servicenow_number: str = Field(default="", description="Existing INC# to attach RCA to")
 
 
-@router.post("/api/v1/incidents/{incident_id}/resolve")
+@router.post("/api/v1/incidents/{incident_id}/resolve", dependencies=[Depends(require_api_key)])
 def resolve_incident(incident_id: str, body: ResolveRequest) -> dict:
     """
-    Human feedback endpoint — mark incident outcome and trigger auto-learning.
-
-    Called when an engineer confirms a manual fix worked, or to backfill learning
-    from a completed ExecutorAgent run.
+    Human feedback endpoint — mark incident outcome, trigger auto-learning,
+    page-resolve in PagerDuty, and attach the RCA back to ServiceNow.
     """
+    alert_name = body.alert_name
+    namespace = body.namespace
+    snapshot: dict | None = None
+
     if body.execution_id:
         snapshot = executor_agent.get(body.execution_id)
         if snapshot:
             snapshot["status"] = body.outcome
             if body.final_summary:
                 snapshot["final_summary"] = body.final_summary
-            result = learning_agent.ingest_from_execution(
+            alert_name = alert_name or snapshot.get("alert_name", "")
+            namespace = namespace or snapshot.get("namespace", "")
+            learning = learning_agent.ingest_from_execution(
                 snapshot,
-                fire_count=get_fire_count(snapshot.get("alert_name", ""), snapshot.get("namespace", "")),
+                fire_count=get_fire_count(alert_name, namespace),
             )
-            return {"incident_id": incident_id, "learning": result}
+        else:
+            learning = {"ingested": False, "reason": f"execution {body.execution_id} not found"}
+    else:
+        payload = {
+            "alert_name": alert_name,
+            "namespace": namespace,
+            "outcome": body.outcome,
+            "scratchpad": body.scratchpad,
+            "final_summary": body.final_summary,
+            "triage_summary": body.triage_summary,
+            "fire_count": get_fire_count(alert_name, namespace),
+        }
+        learning = learning_agent.execute(payload)
 
-    payload = {
-        "alert_name": body.alert_name,
-        "namespace": body.namespace,
+    prior_resolutions = learning_agent.count_prior_resolutions(alert_name, namespace)
+
+    # ── Side-effects: page resolve + attach RCA ────────────────────────────
+    side_effects: dict = {}
+    if alert_name and body.outcome == "resolved":
+        if pagerduty.is_configured():
+            side_effects["pagerduty_resolved"] = pagerduty.resolve(
+                dedup_key=pagerduty.dedup_key_for(alert_name, namespace),
+                summary=body.final_summary or f"{alert_name} resolved by SRE AI Copilot",
+            )
+        if body.servicenow_number and servicenow.is_configured():
+            rca = _build_resolution_markdown(alert_name, namespace, body, snapshot, learning)
+            side_effects["servicenow_attached"] = servicenow.attach_rca(
+                incident_number=body.servicenow_number,
+                rca_markdown=rca,
+                final_summary=body.final_summary,
+            )
+
+    return {
+        "incident_id": incident_id,
         "outcome": body.outcome,
-        "scratchpad": body.scratchpad,
-        "final_summary": body.final_summary,
-        "triage_summary": body.triage_summary,
-        "fire_count": get_fire_count(body.alert_name, body.namespace),
+        "learning": learning,
+        "prior_resolutions": prior_resolutions,
+        "side_effects": side_effects,
     }
-    result = learning_agent.execute(payload)
-    return {"incident_id": incident_id, "learning": result}
+
+
+# ── Escalation: human declined a write action ───────────────────────────────
+
+class EscalateRequest(BaseModel):
+    alert_name: str
+    namespace: str = ""
+    summary: str = "Manual approval declined — paging on-call"
+    severity: str = "P1"
+    execution_id: str = ""
+    triage_summary: str = ""
+
+
+@router.post("/api/v1/incidents/{incident_id}/escalate", dependencies=[Depends(require_api_key)])
+def escalate_incident(incident_id: str, body: EscalateRequest) -> dict:
+    """
+    Page on-call via PagerDuty + open a fresh ServiceNow incident (if not done already).
+    Called from ExecutionDrawer when the engineer rejects an auto-remediation.
+    """
+    pd_triggered = False
+    snow_number: str | None = None
+    if pagerduty.is_configured():
+        pd_triggered = pagerduty.trigger(
+            dedup_key=pagerduty.dedup_key_for(body.alert_name, body.namespace),
+            summary=body.summary,
+            severity=body.severity,
+            custom_details={
+                "incident_id": incident_id,
+                "execution_id": body.execution_id,
+                "namespace": body.namespace,
+                "triage_summary": body.triage_summary[:500],
+            },
+        )
+    if servicenow.is_configured():
+        snow_number = servicenow.create_incident(
+            alert_name=body.alert_name,
+            namespace=body.namespace,
+            severity=body.severity,
+            summary=body.summary,
+            extra={"incident_id": incident_id, "execution_id": body.execution_id},
+        )
+    return {
+        "incident_id": incident_id,
+        "pagerduty_triggered": pd_triggered,
+        "servicenow_number": snow_number,
+    }
+
+
+# ── System info: write-action registry + integrations status ────────────────
+
+@router.get("/api/v1/incidents/system/actions")
+def list_actions() -> dict:
+    """Single source of truth — used by frontend to flag write actions."""
+    return {
+        "write_actions": list_write_actions(),
+        "read_actions": list_read_actions(),
+    }
+
+
+@router.get("/api/v1/incidents/system/integrations")
+def integrations_status() -> dict:
+    """Tell the frontend which side-effect integrations are configured."""
+    return {
+        "pagerduty": pagerduty.is_configured(),
+        "servicenow": servicenow.is_configured(),
+    }
+
+
+# ── helpers ─────────────────────────────────────────────────────────────────
+
+def _build_resolution_markdown(
+    alert_name: str,
+    namespace: str,
+    body: ResolveRequest,
+    snapshot: dict | None,
+    learning: dict,
+) -> str:
+    lines = [
+        f"# Resolution — {alert_name}",
+        "",
+        f"- **Namespace:** `{namespace}`",
+        f"- **Outcome:** {body.outcome}",
+        f"- **Execution ID:** `{body.execution_id or '(manual)'}`",
+        f"- **Learning ingested:** {learning.get('ingested')}",
+        "",
+    ]
+    if body.final_summary:
+        lines += ["## Summary", body.final_summary, ""]
+    elif snapshot and snapshot.get("final_summary"):
+        lines += ["## Summary", snapshot["final_summary"], ""]
+    scratchpad = body.scratchpad or (snapshot.get("scratchpad", []) if snapshot else [])
+    if scratchpad:
+        lines += ["## Steps"]
+        for i, step in enumerate(scratchpad, 1):
+            action = step.get("action", "?")
+            args = step.get("args") or {}
+            args_str = " ".join(f"{k}={v}" for k, v in args.items() if v)
+            lines.append(f"{i}. `{action} {args_str}`")
+        lines.append("")
+    lines.append("_Auto-generated by SRE AI Copilot._")
+    return "\n".join(lines)

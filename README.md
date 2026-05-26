@@ -162,17 +162,37 @@ ollama serve
 ```bash
 # Terminal 1 — Infrastructure (ChromaDB in Minikube)
 minikube start
-make start-infra          # deploys ChromaDB + port-forwards :8000
+make start-infra          # Ollama + ChromaDB on :8000
 
-# Terminal 2 — Backend (hot reload)
+# Terminal 2 — Observability + demo stack (once per Minikube session)
+make deploy-all           # Prometheus, Loki, Promtail, OTel, synthetic apps, Kafka
+make dev-up               # after sleep/restart — refresh :19090/:13100 port-forwards
+make kafka-port-forward   # Kafka :9092 (separate terminal)
+
+# Terminal 3 — Backend (hot reload)
 source venv/bin/activate
 make start-backend        # FastAPI on :8080
 
-# Terminal 3 — Ingest knowledge base
-make ingest               # loads incidents + runbooks into ChromaDB
-
-# Terminal 4 — Frontend (HMR)
+# Terminal 4 — Ingest + Frontend
+make ingest
+make ingest-profile      # resume-only RAG for /resume recruiter Q&A (ChromaDB sre_candidate_profile)
 make start-frontend       # React on http://localhost:5173
+```
+
+Set observability URLs in `.env` (see `.env.example`):
+
+```
+PROMETHEUS_URL=http://localhost:19090
+LOKI_URL=http://localhost:13100
+KAFKA_ENABLED=true
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+```
+
+Verify the Observe page data path:
+
+```bash
+make observability-status
+make status
 ```
 
 ### Verify everything is working
@@ -276,6 +296,21 @@ knowledge_collections = {
 # 3. Ingest
 make ingest
 ```
+
+### Recruiter profile RAG (`/resume`)
+
+The recruiter Ask panel uses a **separate** ChromaDB collection (`sre_candidate_profile`) indexed from `backend/routers/resume_content.py` — not runbooks or architecture docs.
+
+```bash
+make ingest-profile
+# or via API (backend running):
+curl -X POST http://localhost:8080/api/v1/ingest/profile/sync
+
+# verify chunk count:
+curl -s http://localhost:8080/api/v1/knowledge/status | python -m json.tool
+```
+
+On backend startup, profile ingest runs automatically if the collection is empty (requires Ollama + `nomic-embed-text`).
 
 ---
 

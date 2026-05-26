@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-api
+  namespace: synthetic
+  labels:
+    app: payment-api
+    team: payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-api
+  template:
+    metadata:
+      labels:
+        app: payment-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+        loki.grafana.com/log-format: "json"
+    spec:
+      containers:
+        - name: payment-api
+          image: demo-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5000
+              name: http
+          env:
+            - name: SERVICE_NAME
+              value: "payment-api"
+            - name: SERVICE_PROFILE
+              value: "payment"
+            - name: NAMESPACE
+              value: "synthetic"
+            - name: ENVIRONMENT
+              value: "production"
+            - name: PORT
+              value: "5000"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability.svc.cluster.local:4317"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          resources:
+            requests: {memory: "32Mi", cpu: "10m"}
+            limits:   {memory: "256Mi", cpu: "300m"}
+          readinessProbe:
+            httpGet: {path: /health, port: 5000}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 5000}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-api
+  namespace: synthetic
+spec:
+  selector:
+    app: payment-api
+  ports:
+    - port: 5000
+      targetPort: 5000
+      nodePort: 30510
+  type: NodePort

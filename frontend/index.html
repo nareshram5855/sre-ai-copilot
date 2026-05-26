@@ -4,10 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SRE AI Copilot</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236366f1'/><path d='M16 7l7 4v6c0 4.5-3 8.7-7 9.8C12 25.7 9 21.5 9 17v-6l7-4z' fill='none' stroke='white' stroke-width='1.5' stroke-linejoin='round'/></svg>" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      window.addEventListener("load", function () {
+        window.setTimeout(function () {
+          var root = document.getElementById("root");
+          if (root && !root.childElementCount) {
+            root.innerHTML =
+              '<div style="padding:2rem;font-family:Inter,system-ui,sans-serif;color:#e5e7eb;background:#0f1117;min-height:100vh">' +
+              '<h1 style="font-size:1.25rem;font-weight:700;margin:0 0 0.5rem">Page did not load</h1>' +
+              '<p style="color:#9ca3af;font-size:0.875rem;margin:0 0 1rem">Try a hard refresh (Cmd+Shift+R). If nginx stopped, run <code style="color:#5eead4">make serve-all</code> in the project folder.</p>' +
+              "</div>";
+          }
+        }, 4000);
+      });
+    </script>
   </body>
 </html>

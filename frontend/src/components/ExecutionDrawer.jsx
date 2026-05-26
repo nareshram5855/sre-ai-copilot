@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   X, CheckCircle, XCircle, Loader2, Terminal, ShieldAlert,
   Check, Zap, Database, FileText, Activity, Brain, ChevronRight,
-  Radio, GitBranch, Cpu, Code2, AlertTriangle, Copy,
+  Radio, GitBranch, Cpu, Code2, AlertTriangle, Copy, BookOpen,
+  PhoneCall, Flame,
 } from "lucide-react";
 import axios from "axios";
 
@@ -214,21 +216,25 @@ function CodeFixCard({ suggestion, index }) {
 }
 
 // ── Main drawer ───────────────────────────────────────────────────────────────
-export function ExecutionDrawer({ incident, onClose }) {
-  const [execId,        setExecId]        = useState(null);
-  const [status,        setStatus]        = useState("idle");   // idle|running|waiting_approval|resolved|escalated|failed
-  const [gatherState,   setGatherState]   = useState({});       // {pods|logs|metrics: {status, output}}
-  const [steps,         setSteps]         = useState([]);
-  const [thinking,      setThinking]      = useState(false);
-  const [currentThought,setCurrentThought]= useState("");
-  const [pendingAction, setPendingAction] = useState(null);
-  const [finalSummary,  setFinalSummary]  = useState("");
-  const [codeSuggestions,setCodeSuggestions] = useState([]);
-  const [alertCategory,  setAlertCategory]   = useState("");
-  const [starting,      setStarting]      = useState(false);
-  const [approving,     setApproving]     = useState(false);
-  const [error,         setError]         = useState(null);
-  const esRef   = useRef(null);           // EventSource ref
+export function ExecutionDrawer({ incident, onClose, onOpenAudit }) {
+  const navigate = useNavigate();
+  const [execId,          setExecId]          = useState(null);
+  const [status,          setStatus]          = useState("idle");   // idle|running|waiting_approval|resolved|escalated|failed
+  const [gatherState,     setGatherState]     = useState({});       // {pods|logs|metrics: {status, output}}
+  const [steps,           setSteps]           = useState([]);
+  const [thinking,        setThinking]        = useState(false);
+  const [currentThought,  setCurrentThought]  = useState("");
+  const [pendingAction,   setPendingAction]   = useState(null);
+  const [finalSummary,    setFinalSummary]    = useState("");
+  const [codeSuggestions, setCodeSuggestions] = useState([]);
+  const [alertCategory,   setAlertCategory]   = useState("");
+  const [starting,        setStarting]        = useState(false);
+  const [approving,       setApproving]       = useState(false);
+  const [escalating,      setEscalating]      = useState(false);
+  const [resolving,       setResolving]       = useState(false);
+  const [resolveResult,   setResolveResult]   = useState(null);
+  const [error,           setError]           = useState(null);
+  const esRef    = useRef(null);           // EventSource ref
   const bottomRef = useRef(null);
   const incidentId = `${incident.alert_name}-${incident.namespace}`;
 
@@ -349,6 +355,7 @@ export function ExecutionDrawer({ incident, onClose }) {
     setPendingAction(null);
     setCodeSuggestions([]);
     setAlertCategory("");
+    setResolveResult(null);
     try {
       const { data } = await axios.post(`/api/v1/incidents/${incidentId}/execute`, {
         alert_name:     incident.alert_name,
@@ -383,10 +390,61 @@ export function ExecutionDrawer({ incident, onClose }) {
     }
   }
 
+  async function escalate() {
+    setEscalating(true);
+    setError(null);
+    try {
+      await axios.post(`/api/v1/incidents/${incidentId}/escalate`, {
+        alert_name:     incident.alert_name,
+        namespace:      incident.namespace,
+        severity:       incident.severity || "P1",
+        execution_id:   execId || "",
+        triage_summary: incident.summary || "",
+        summary:        `Manual approval declined — paging on-call for ${incident.alert_name}`,
+      });
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message);
+    } finally {
+      setEscalating(false);
+      onClose();
+    }
+  }
+
+  async function markResolved() {
+    setResolving(true);
+    setError(null);
+    try {
+      const { data } = await axios.post(`/api/v1/incidents/${incidentId}/resolve`, {
+        outcome:        "resolved",
+        alert_name:     incident.alert_name,
+        namespace:      incident.namespace,
+        final_summary:  finalSummary,
+        execution_id:   execId || "",
+        triage_summary: incident.summary || "",
+      });
+      setResolveResult(data);
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message);
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  function handleOpenAudit() {
+    if (onOpenAudit && execId) {
+      onOpenAudit(execId);
+    } else if (execId) {
+      navigate(`/audit?execution_id=${encodeURIComponent(execId)}`);
+    }
+    onClose();
+  }
+
   const cfg        = STATUS_CONFIG[status];
   const StatusIcon = cfg?.icon;
   const gatherDone = Object.values(gatherState).filter(g => g.status === "done").length;
   const gatherTotal = 3;
+  const fireCount  = incident.fire_count || 1;
+  const isDone     = ["resolved", "escalated", "failed"].includes(status);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
@@ -411,6 +469,12 @@ export function ExecutionDrawer({ incident, onClose }) {
                   "bg-gray-900/40 text-gray-400 border-gray-700/30"
                 }`}>
                   {alertCategory}
+                </span>
+              )}
+              {/* Fire count badge */}
+              {fireCount > 1 && (
+                <span className="flex items-center gap-0.5 text-[10px] bg-red-900/30 text-red-300 border border-red-700/30 rounded px-1.5 py-0.5 font-mono flex-shrink-0">
+                  <Flame size={9} />×{fireCount}
                 </span>
               )}
             </div>
@@ -462,7 +526,14 @@ export function ExecutionDrawer({ incident, onClose }) {
                   </div>
                 </div>
                 <div className="bg-sre-surface border border-sre-border rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1.5 font-semibold uppercase tracking-wider">AI Triage</p>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">AI Triage</p>
+                    {fireCount > 1 && (
+                      <span className="text-[10px] text-red-400 flex items-center gap-1">
+                        <Flame size={10} /> Fired {fireCount}× — system has prior context
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-300 leading-relaxed">{incident.summary}</p>
                 </div>
               </div>
@@ -524,14 +595,14 @@ export function ExecutionDrawer({ incident, onClose }) {
                     {currentThought}
                     <ThinkingDots />
                   </p>
-                  <p className="text-[10px] text-gray-600 mt-0.5">mistral:7b · M1 Pro GPU · ctx/2048</p>
+                  <p className="text-[10px] text-gray-600 mt-0.5">on-prem LLM · LangGraph ReAct loop</p>
                 </div>
               </div>
             </FadeIn>
           )}
 
           {/* ── Final result ── */}
-          {finalSummary && ["resolved", "escalated", "failed"].includes(status) && (
+          {finalSummary && isDone && (
             <FadeIn>
               <div className={`border rounded-xl p-4 ${
                 status === "resolved"
@@ -542,6 +613,32 @@ export function ExecutionDrawer({ incident, onClose }) {
                   {status === "resolved" ? "Incident Resolved" : "Requires Human Escalation"}
                 </p>
                 <p className="text-xs text-gray-300 leading-relaxed">{finalSummary}</p>
+              </div>
+            </FadeIn>
+          )}
+
+          {/* ── Resolve feedback ── */}
+          {resolveResult && (
+            <FadeIn>
+              <div className="border border-teal-700/50 bg-teal-950/20 rounded-xl p-4 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <BookOpen size={12} className="text-teal-400" />
+                  <p className="text-xs font-semibold text-teal-400">Resolved & Learning Ingested</p>
+                </div>
+                {resolveResult.prior_resolutions > 0 && (
+                  <p className="text-[10px] text-gray-500">
+                    Prior resolutions for this alert: {resolveResult.prior_resolutions} — AI confidence improves each time.
+                  </p>
+                )}
+                {resolveResult.learning?.ingested === false && (
+                  <p className="text-[10px] text-orange-400">Learning skipped: {resolveResult.learning.reason}</p>
+                )}
+                {(resolveResult.side_effects?.pagerduty_resolved) && (
+                  <p className="text-[10px] text-gray-500">PagerDuty incident resolved.</p>
+                )}
+                {(resolveResult.side_effects?.servicenow_attached) && (
+                  <p className="text-[10px] text-gray-500">RCA attached to ServiceNow.</p>
+                )}
               </div>
             </FadeIn>
           )}
@@ -607,13 +704,33 @@ export function ExecutionDrawer({ incident, onClose }) {
                     }
                   </button>
                   <button
-                    onClick={onClose}
-                    className="flex-1 text-xs text-gray-400 hover:text-gray-200 border border-sre-border py-2.5 rounded-lg transition-colors hover:bg-sre-border"
+                    onClick={escalate}
+                    disabled={escalating}
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs text-orange-300 hover:text-orange-200 border border-orange-700/50 py-2.5 rounded-lg transition-colors hover:bg-orange-950/30 disabled:opacity-50"
                   >
-                    Reject — Escalate
+                    {escalating
+                      ? <><Loader2 size={12} className="animate-spin" /> Paging...</>
+                      : <><PhoneCall size={12} /> Reject — Escalate</>
+                    }
                   </button>
                 </div>
               </div>
+            </FadeIn>
+          )}
+
+          {/* Mark Resolved — shown when agent says resolved/escalated and user hasn't confirmed yet */}
+          {isDone && !resolveResult && (
+            <FadeIn>
+              <button
+                onClick={markResolved}
+                disabled={resolving}
+                className="w-full flex items-center justify-center gap-2 bg-teal-700 hover:bg-teal-600 disabled:opacity-50 text-white text-xs font-semibold py-2.5 rounded-xl transition-colors"
+              >
+                {resolving
+                  ? <><Loader2 size={12} className="animate-spin" /> Teaching system...</>
+                  : <><BookOpen size={12} /> Mark Resolved &amp; Teach System</>
+                }
+              </button>
             </FadeIn>
           )}
 
@@ -628,6 +745,15 @@ export function ExecutionDrawer({ incident, onClose }) {
                 ? <><Loader2 size={14} className="animate-spin" /> Initialising graph...</>
                 : <><Terminal size={14} /> Launch ExecutorAgent</>
               }
+            </button>
+          )}
+
+          {execId && (
+            <button
+              onClick={handleOpenAudit}
+              className="block w-full text-center text-[10px] text-gray-500 hover:text-gray-300 mt-2 transition-colors"
+            >
+              View audit log →
             </button>
           )}
         </div>

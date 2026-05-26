@@ -26,7 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from backend.config import get_settings
-from backend.routers import agent_react, agent_run, alertmanager, chat, execute, health, incident_analysis, incidents, knowledge, observability, rca, runbook, triage
+from backend.monitoring.profiler import ProfilerMiddleware
+from backend.routers import agent_react, agent_run, alertmanager, audit, chat, demo, docs, events, execute, health, incident_analysis, incidents, knowledge, observability, profiler, rca, recruiter, runbook, triage
 from backend.voice.config import get_voice_settings
 from backend.voice import router as voice_router
 
@@ -39,8 +40,17 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from backend.integrations import anomaly_watcher, kafka_bus
+    from backend.memory.persistence import init_persistence
+
+    init_persistence()
+    await kafka_bus.start()
+    await anomaly_watcher.start()
     _startup_checks()
+    _ensure_profile_rag()
     yield
+    await anomaly_watcher.stop()
+    await kafka_bus.stop()
 
 
 def _startup_checks() -> None:
@@ -55,6 +65,20 @@ def _startup_checks() -> None:
             _warmup_executor_cache(cfg)
     except Exception:
         logger.warning("Ollama unreachable at %s. Run: ollama serve", cfg.ollama_base_url)
+
+
+def _ensure_profile_rag() -> None:
+    """Index resume content for recruiter RAG when the profile collection is empty."""
+    import threading
+    from backend.knowledge.profile_ingest import ensure_profile_ingested
+
+    def _ingest():
+        try:
+            ensure_profile_ingested()
+        except Exception as exc:
+            logger.warning("Profile RAG auto-ingest failed: %s — run: make ingest-profile", exc)
+
+    threading.Thread(target=_ingest, daemon=True).start()
 
 
 def _warmup_executor_cache(cfg) -> None:
@@ -105,20 +129,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ProfilerMiddleware)
 
 Instrumentator().instrument(app).expose(app)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 
 app.include_router(health.router)
+app.include_router(profiler.router)
 app.include_router(triage.router)
 app.include_router(knowledge.router)
 app.include_router(chat.router)
 app.include_router(runbook.router)
 app.include_router(rca.router)
 app.include_router(alertmanager.router)
+app.include_router(events.router)
 app.include_router(incidents.router)
 app.include_router(execute.router)
+app.include_router(audit.router)
 app.include_router(agent_run.router)
 app.include_router(agent_react.router)
 
@@ -129,6 +157,19 @@ if get_voice_settings().voice_enabled:
     logger.info("Voice module enabled ✓")
 app.include_router(incident_analysis.router)
 app.include_router(observability.router)
+app.include_router(docs.router)
+app.include_router(recruiter.router)
+app.include_router(demo.router)
+
+# ── Static frontend (production / Railway) ────────────────────────────────────
+# Served only when the React build exists (i.e. in Docker / after npm run build).
+# In local dev, Vite's dev server handles the frontend instead.
+import os as _os
+_dist = _os.path.join(_os.path.dirname(__file__), "..", "frontend", "dist")
+if _os.path.isdir(_dist):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=_dist, html=True), name="spa")
+    logger.info("Serving React SPA from frontend/dist")
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────
 

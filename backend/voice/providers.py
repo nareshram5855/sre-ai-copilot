@@ -81,8 +81,18 @@ class LocalTTSProvider(TTSProvider):
         import pyttsx3
 
         engine = pyttsx3.init()
-        engine.setProperty("rate", int(150 * rate))  # Default 150 wpm
+        engine.setProperty("rate", int(150 * rate))
         engine.setProperty("pitch", pitch)
+
+        preferred = ("Samantha", "Karen", "Daniel", "Alex", "Victoria")
+        try:
+            for voice in engine.getProperty("voices") or []:
+                name = getattr(voice, "name", "") or ""
+                if any(p in name for p in preferred):
+                    engine.setProperty("voice", voice.id)
+                    break
+        except Exception:
+            pass
 
         suffix = ".mp3" if output_format == AudioFormat.MP3 else ".wav"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -136,6 +146,7 @@ class LocalSTTProvider(STTProvider):
     def __init__(self):
         self.cfg = get_voice_settings()
         self._model_cache = None
+        self._model_cache_name = None
 
     async def transcribe(
         self,
@@ -166,25 +177,66 @@ class LocalSTTProvider(STTProvider):
             logger.error(f"STT transcription failed: {exc}")
             raise RuntimeError(f"STT transcription failed: {exc}")
 
+    def _normalize_whisper_model(self, model_name: str) -> str:
+        """Map config names like whisper-base to OpenAI Whisper ids like base."""
+        name = (model_name or "base").strip()
+        if name.startswith("whisper-"):
+            name = name[len("whisper-"):]
+        return name or "base"
+
+    def _load_wav_numpy(self, audio_data: bytes):
+        """Decode 16-bit PCM WAV bytes to float32 mono @ 16 kHz (no ffmpeg)."""
+        import io
+        import wave
+
+        import numpy as np
+
+        with wave.open(io.BytesIO(audio_data), "rb") as wf:
+            sample_rate = wf.getframerate()
+            channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
+            frames = wf.readframes(wf.getnframes())
+
+        if sample_width == 2:
+            audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        elif sample_width == 4:
+            audio = np.frombuffer(frames, dtype=np.int32).astype(np.float32) / 2147483648.0
+        else:
+            raise RuntimeError(f"Unsupported WAV sample width: {sample_width}")
+
+        if channels > 1:
+            audio = audio.reshape(-1, channels).mean(axis=1)
+
+        if sample_rate != 16000:
+            ratio = sample_rate / 16000
+            new_len = int(len(audio) / ratio)
+            indices = (np.arange(new_len) * ratio).astype(np.int64)
+            audio = audio[np.minimum(indices, len(audio) - 1)]
+
+        return audio
+
     def _run_whisper(self, audio_data: bytes, language: Optional[str]) -> dict[str, str]:
         """Synchronous Whisper transcription."""
         import whisper
-        import io
 
-        # Load model (cached)
-        if self._model_cache is None:
-            self._model_cache = whisper.load_model(self.cfg.stt_local_model)
+        model_name = self._normalize_whisper_model(self.cfg.stt_local_model)
 
-        # Transcribe from bytes
-        # Whisper expects file path or accepts numpy array
-        audio_buffer = io.BytesIO(audio_data)
-        result = self._model_cache.transcribe(audio_buffer, language=language)
+        if self._model_cache is None or self._model_cache_name != model_name:
+            self._model_cache = whisper.load_model(model_name)
+            self._model_cache_name = model_name
+
+        audio = self._load_wav_numpy(audio_data)
+        lang = None
+        if language:
+            lang = language.split("-")[0].lower()
+
+        result = self._model_cache.transcribe(audio, language=lang)
 
         return {
-            "text": result.get("text", ""),
-            "confidence": result.get("language", ""),  # Whisper returns language, not confidence
-            "language": result.get("language", "en"),
-            "duration_seconds": result.get("duration", 0.0),
+            "text": (result.get("text") or "").strip(),
+            "confidence": 0.85,
+            "language": result.get("language") or language or "en",
+            "duration_seconds": float(result.get("duration") or 0.0),
         }
 
     async def _stub_transcribe(self, audio_data: bytes) -> dict[str, str]:
@@ -208,6 +260,112 @@ class LocalSTTProvider(STTProvider):
     @property
     def requires_api_key(self) -> bool:
         return False
+
+
+# ── Edge Neural TTS (Microsoft — free, natural, no API key) ───────────────────
+
+class EdgeTTSProvider(TTSProvider):
+    """
+    Microsoft Edge neural voices — conversational quality similar to modern AI assistants.
+    Uses the edge-tts library (online, no API key required).
+    """
+
+    _VOICES: dict[str, dict[str, str]] = {
+        "en-US": {
+            "female": "en-US-JennyNeural",
+            "male": "en-US-AndrewNeural",
+            "neutral": "en-US-AriaNeural",
+        },
+        "en-GB": {
+            "female": "en-GB-SoniaNeural",
+            "male": "en-GB-RyanNeural",
+            "neutral": "en-GB-LibbyNeural",
+        },
+    }
+
+    def __init__(self):
+        self.cfg = get_voice_settings()
+
+    def _resolve_voice(self, language: str, gender: VoiceGender) -> str:
+        if self.cfg.tts_neural_voice:
+            return self.cfg.tts_neural_voice
+
+        lang = language or self.cfg.tts_language or "en-US"
+        lang_voices = self._VOICES.get(lang) or self._VOICES["en-US"]
+        gender_key = gender.value if isinstance(gender, VoiceGender) else str(gender)
+        return lang_voices.get(gender_key, lang_voices["neutral"])
+
+    @staticmethod
+    def _rate_string(rate: float) -> str:
+        pct = int(round((rate - 1.0) * 100))
+        return f"{pct:+d}%"
+
+    @staticmethod
+    def _pitch_string(pitch: float) -> str:
+        hz = int(round(pitch * 12))
+        return f"{hz:+d}Hz"
+
+    async def synthesize(
+        self,
+        text: str,
+        *,
+        language: str = "en-US",
+        gender: VoiceGender = VoiceGender.NEUTRAL,
+        rate: float = 1.0,
+        pitch: float = 0.0,
+        output_format: AudioFormat = AudioFormat.MP3,
+    ) -> bytes:
+        if not text or not text.strip():
+            raise ValueError("Text cannot be empty")
+
+        try:
+            import edge_tts
+        except ImportError as exc:
+            raise RuntimeError(
+                "edge-tts not installed. Run: pip install edge-tts"
+            ) from exc
+
+        voice = self._resolve_voice(language, gender)
+        communicate = edge_tts.Communicate(
+            text,
+            voice,
+            rate=self._rate_string(rate),
+            pitch=self._pitch_string(pitch),
+        )
+
+        chunks: list[bytes] = []
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                chunks.append(chunk["data"])
+
+        audio = b"".join(chunks)
+        if not audio:
+            raise RuntimeError("Edge TTS returned empty audio")
+
+        return audio
+
+    def get_supported_languages(self) -> list[str]:
+        return list(self._VOICES.keys())
+
+    def get_supported_voices(self) -> list[dict[str, str]]:
+        voices = []
+        for lang, by_gender in self._VOICES.items():
+            for gender, voice_id in by_gender.items():
+                voices.append({
+                    "voice_id": voice_id,
+                    "name": voice_id.split("-")[-1].replace("Neural", ""),
+                    "gender": gender,
+                    "language": lang,
+                })
+        return voices
+
+    @property
+    def name(self) -> str:
+        return "edge-neural-tts"
+
+    @property
+    def supports_streaming(self) -> bool:
+        return True
 
 
 # ── Google Cloud TTS (Stub) ───────────────────────────────────────────────────
@@ -373,6 +531,7 @@ class GoogleCloudSTTProvider(STTProvider):
 # ── Provider Registry ─────────────────────────────────────────────────────────
 
 _TTS_PROVIDERS = {
+    "edge": EdgeTTSProvider,
     "local": LocalTTSProvider,
     "google-cloud": GoogleCloudTTSProvider,
 }
@@ -387,6 +546,13 @@ def get_tts_provider(name: Optional[str] = None) -> TTSProvider:
     """Get TTS provider by name, or use configured default."""
     cfg = get_voice_settings()
     provider_name = name or cfg.tts_provider
+
+    if provider_name == "edge":
+        try:
+            import edge_tts  # noqa: F401
+        except ImportError:
+            logger.warning("edge-tts not installed — falling back to local TTS")
+            provider_name = "local"
 
     if provider_name not in _TTS_PROVIDERS:
         raise ValueError(f"Unknown TTS provider: {provider_name}. Available: {list(_TTS_PROVIDERS.keys())}")

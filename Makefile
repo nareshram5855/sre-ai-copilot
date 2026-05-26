@@ -1,12 +1,19 @@
 .PHONY: help setup setup-voice ollama-setup start-infra stop-infra \
-        start-backend start-frontend ingest status logs wipe-data \
-        test test-unit test-integration test-cov
+        start-backend start-frontend start-all stop-all ingest ingest-profile status logs wipe-data \
+        test test-unit test-integration test-cov \
+        deploy-kafka kafka-port-forward kafka-status \
+        deploy-observability deploy-synthetic observability-port-forward \
+        observability-port-forward-watch observability-pf-daemon dev-up \
+        observability-status deploy-all smoke-test-minikube \
+        nginx-install nginx-reload nginx-start nginx-stop serve-backend serve-all build-frontend
 
 PYTEST      := venv/bin/pytest
 PYTHON      := venv/bin/python
 PIP         := venv/bin/pip
 UVICORN     := venv/bin/uvicorn
 CHROMA_PID  := .chromadb.pid
+OBS_PF_PROM := 19090
+OBS_PF_LOKI := 13100
 
 help:
 	@echo ""
@@ -18,13 +25,21 @@ help:
 	@echo "    make ollama-setup      Pull llama3.1:8b + nomic-embed-text"
 	@echo ""
 	@echo "  Daily dev (run in order):"
+	@echo "    make dev-up              Start PF daemon + verify Prom/Loki (run after sleep/restart)"
 	@echo "    make start-infra       Start Ollama + ChromaDB on :8000"
+	@echo "    make deploy-all        Minikube: full stack (observability, Kafka, Redis, ChromaDB, synthetic)"
+	@echo "    make smoke-test-minikube  Post-deploy health checks for Minikube stack"
+	@echo "    make observability-port-forward  One-shot PF refresh (daemon preferred: make dev-up)"
+	@echo "    make observability-pf-daemon     PF watchdog daemon (start|stop|status|restart)"
+	@echo "    make kafka-port-forward  Forward Kafka :9092 to localhost (separate terminal)"
 	@echo "    make start-backend     FastAPI on :8080 (hot reload)"
 	@echo "    make ingest            Load knowledge base into ChromaDB"
+	@echo "    make ingest-profile    Index resume for recruiter profile RAG"
 	@echo "    make start-frontend    React + Vite on :5173 (HMR)"
 	@echo ""
 	@echo "  Ops:"
 	@echo "    make status            Health check all services"
+	@echo "    make observability-status  Prometheus/Loki/synthetic stack checks"
 	@echo "    make stop-infra        Stop ChromaDB"
 	@echo "    make wipe-data         Delete ChromaDB data (full reset)"
 	@echo ""
@@ -49,6 +64,7 @@ setup:
 
 setup-voice:
 	$(PIP) install -r backend/requirements-voice.txt
+	$(PIP) install --no-build-isolation 'openai-whisper==20240930' || true
 	@echo "✓ Voice deps installed. Set VOICE_VOICE_ENABLED=true in .env to enable."
 
 ollama-setup:
@@ -78,6 +94,73 @@ stop-infra:
 	@rm -f $(CHROMA_PID)
 	@echo "✓ ChromaDB stopped. Data preserved in .chromadb-data/"
 
+# ── Kafka (Minikube) ──────────────────────────────────────────────────────────
+
+deploy-kafka:
+	chmod +x infrastructure/k8s/kafka/install.sh
+	infrastructure/k8s/kafka/install.sh
+
+kafka-port-forward:
+	@echo "→ Forwarding Kafka to localhost:9092 (Ctrl+C to stop)"
+	kubectl port-forward svc/kafka -n kafka 9092:9092
+
+kafka-status:
+	@kubectl get pods,svc -n kafka 2>/dev/null || echo "Kafka namespace not deployed"
+	@curl -sf http://localhost:8080/api/v1/events/health 2>/dev/null | $(PYTHON) -m json.tool || true
+
+# ── Observability (Minikube) ──────────────────────────────────────────────────
+
+deploy-observability:
+	chmod +x infrastructure/k8s/observability/install.sh
+	infrastructure/k8s/observability/install.sh
+
+deploy-synthetic:
+	chmod +x infrastructure/k8s/observability/deploy-synthetic.sh
+	infrastructure/k8s/observability/deploy-synthetic.sh
+
+observability-port-forward:
+	chmod +x scripts/ensure-port-forwards.sh
+	scripts/ensure-port-forwards.sh
+
+observability-port-forward-watch:
+	chmod +x scripts/ensure-port-forwards.sh
+	scripts/ensure-port-forwards.sh --loop
+
+observability-pf-daemon:
+	chmod +x scripts/observability-pf-daemon.sh
+	scripts/observability-pf-daemon.sh start
+
+dev-up:
+	@echo "→ Starting observability port-forward daemon (auto-restarts after sleep)…"
+	chmod +x scripts/observability-pf-daemon.sh scripts/ensure-port-forwards.sh
+	scripts/observability-pf-daemon.sh start
+	@echo "→ Verifying Prometheus :$(OBS_PF_PROM) and Loki :$(OBS_PF_LOKI)…"
+	scripts/ensure-port-forwards.sh
+	@echo ""
+	@echo "=== Dev stack health ==="
+	@curl -sf http://localhost:$(OBS_PF_PROM)/-/healthy >/dev/null && \
+		echo "  Prometheus :$(OBS_PF_PROM) ✓" || echo "  Prometheus :$(OBS_PF_PROM) ✗"
+	@curl -sf http://localhost:$(OBS_PF_LOKI)/ready >/dev/null && \
+		echo "  Loki       :$(OBS_PF_LOKI) ✓" || echo "  Loki       :$(OBS_PF_LOKI) ✗"
+	@curl -sf http://localhost:8080/health >/dev/null && \
+		echo "  Backend    :8080 ✓" || echo "  Backend    :8080 ✗  → run: make start-backend"
+	@echo ""
+	@echo "✓ Port-forward daemon running (.observability-pf.pid) — no manual PF needed."
+	@echo "  Next: make start-backend && make start-frontend"
+	@echo "  Command Center: http://localhost:5173"
+
+observability-status:
+	chmod +x infrastructure/k8s/observability/status.sh
+	infrastructure/k8s/observability/status.sh
+
+deploy-all:
+	chmod +x infrastructure/k8s/deploy-all.sh
+	infrastructure/k8s/deploy-all.sh
+
+smoke-test-minikube:
+	chmod +x infrastructure/k8s/smoke-test.sh
+	infrastructure/k8s/smoke-test.sh
+
 wipe-data:
 	@-kill $$(cat $(CHROMA_PID) 2>/dev/null) 2>/dev/null || true
 	@rm -f $(CHROMA_PID)
@@ -87,20 +170,121 @@ wipe-data:
 # ── App services ──────────────────────────────────────────────────────────────
 
 start-backend:
-	$(UVICORN) backend.main:app --host 0.0.0.0 --port 8080 --reload
+	@chmod +x scripts/observability-pf-daemon.sh scripts/ensure-port-forwards.sh
+	@scripts/observability-pf-daemon.sh start
+	@scripts/ensure-port-forwards.sh || echo "⚠  Observability port-forwards failed — run: make dev-up"
+	$(UVICORN) backend.main:app --host 0.0.0.0 --port 8080
 
 start-frontend:
-	cd frontend && npm run dev
+	cd frontend && npm run dev -- --port 5173
+
+start-all:
+	@echo "→ Starting backend + frontend as background daemons…"
+	@pkill -f "uvicorn backend.main" 2>/dev/null || true
+	@pkill -f "vite" 2>/dev/null || true
+	@sleep 1
+	@chmod +x scripts/observability-pf-daemon.sh scripts/ensure-port-forwards.sh
+	@scripts/observability-pf-daemon.sh start
+	@scripts/ensure-port-forwards.sh || echo "⚠  Port-forwards failed — run: make dev-up"
+	@nohup $(UVICORN) backend.main:app --host 0.0.0.0 --port 8080 >> /tmp/uv.log 2>&1 & echo $$! > .backend.pid
+	@sleep 4
+	@curl -sf http://localhost:8080/health > /dev/null && echo "  Backend  :8080 ✓" || echo "  Backend  :8080 ✗ — see /tmp/uv.log"
+	@cd frontend && nohup npm run dev -- --port 5173 >> /tmp/vite.log 2>&1 & echo $$! > ../.frontend.pid
+	@sleep 4
+	@curl -sf http://localhost:5173 > /dev/null && echo "  Frontend :5173 ✓" || echo "  Frontend :5173 ✗ — see /tmp/vite.log"
+	@echo ""
+	@echo "✓ All services running in background."
+	@echo "  Logs: backend=/tmp/uv.log  frontend=/tmp/vite.log"
+	@echo "  Stop: make stop-all"
+
+stop-all:
+	@echo "→ Stopping backend + frontend…"
+	@pkill -f "uvicorn backend.main" 2>/dev/null && echo "  Backend stopped" || true
+	@pkill -f "gunicorn" 2>/dev/null && echo "  Gunicorn stopped" || true
+	@pkill -f "vite" 2>/dev/null && echo "  Frontend stopped" || true
+	@rm -f .backend.pid .frontend.pid
+
+# ── Nginx + Gunicorn (production-style) ──────────────────────────────────────
+
+build-frontend:
+	@echo "→ Building React app…"
+	cd frontend && npm run build
+	@echo "  Build output: frontend/dist/"
+
+nginx-install: build-frontend
+	@echo "→ Installing nginx config + starting nginx…"
+	chmod +x scripts/install-nginx.sh
+	scripts/install-nginx.sh
+	@echo "  App: http://localhost:8090  (nginx → gunicorn)"
+	@echo "  Next: make serve-backend"
+
+nginx-reload:
+	@nginx -t && (nginx -s reload 2>/dev/null || nginx)
+	@echo "nginx reloaded"
+
+nginx-start:
+	@nginx -t
+	@if lsof -i :8090 -sTCP:LISTEN >/dev/null 2>&1; then \
+		echo "nginx already listening on :8090"; \
+		nginx -s reload 2>/dev/null || true; \
+	else \
+		nginx && echo "nginx started on :8090"; \
+	fi
+
+nginx-stop:
+	@nginx -s quit 2>/dev/null && echo "nginx stopped" || brew services stop nginx 2>/dev/null || true
+
+serve-backend:
+	@echo "→ Starting gunicorn ($(shell venv/bin/python -c 'import min,multiprocessing; print(min(4,multiprocessing.cpu_count()))' 2>/dev/null || echo 2) uvicorn workers) on :8080…"
+	@chmod +x scripts/observability-pf-daemon.sh scripts/ensure-port-forwards.sh
+	@scripts/observability-pf-daemon.sh start
+	@scripts/ensure-port-forwards.sh || echo "⚠  Port-forwards failed — run: make dev-up"
+	venv/bin/gunicorn backend.main:app -c gunicorn.conf.py
+
+serve-all: build-frontend nginx-install
+	@echo "→ Starting gunicorn backend in background…"
+	@pkill -f "gunicorn.*backend.main" 2>/dev/null || true
+	@sleep 1
+	@chmod +x scripts/observability-pf-daemon.sh scripts/ensure-port-forwards.sh
+	@scripts/observability-pf-daemon.sh start
+	@scripts/ensure-port-forwards.sh || echo "⚠  Port-forwards failed — run: make dev-up"
+	@nohup venv/bin/gunicorn backend.main:app -c gunicorn.conf.py >> /tmp/sre-ai-gunicorn-error.log 2>&1 & echo $$! > .backend.pid
+	@sleep 5
+	@curl -sf http://localhost:8080/health > /dev/null && echo "  Backend  :8080 ✓ (gunicorn)" || echo "  Backend  :8080 ✗ — see /tmp/sre-ai-gunicorn-error.log"
+	@curl -sf http://localhost:8090 > /dev/null && echo "  Frontend :8090 ✓ (nginx)" || echo "  Frontend :8090 ✗ — see /tmp/sre-ai-nginx-error.log"
+	@echo ""
+	@echo "✓ Production stack running."
+	@echo "  App:  http://localhost:8090"
+	@echo "  Logs: /tmp/sre-ai-gunicorn-*.log  /tmp/sre-ai-nginx-*.log"
+	@echo "  Stop: make stop-all"
 
 ingest:
 	@echo "→ Ingesting knowledge base..."
 	@curl -s -X POST http://localhost:8080/api/v1/ingest/sync | $(PYTHON) -m json.tool
+
+ingest-profile:
+	@echo "→ Ingesting candidate profile for recruiter RAG..."
+	@$(PYTHON) -c "from backend.knowledge.profile_ingest import ingest_profile; n=ingest_profile(force=True); print(f'Indexed {n} profile chunks into sre_candidate_profile')"
 
 # ── Ops ───────────────────────────────────────────────────────────────────────
 
 status:
 	@echo "=== Backend (localhost:8080) ==="
 	@curl -sf http://localhost:8080/health | $(PYTHON) -m json.tool || echo "  offline"
+	@echo "=== Events SSE / Kafka (localhost:8080) ==="
+	@curl -sf http://localhost:8080/api/v1/events/health | $(PYTHON) -m json.tool || echo "  offline"
+	@echo "=== Observability stack (localhost:8080) ==="
+	@curl -sf http://localhost:8080/api/v1/observability/stack | $(PYTHON) -c \
+		"import sys,json; d=json.load(sys.stdin); \
+[print(' ', t['name']+':', t['status'], t.get('stats',{})) for t in d.get('tools',[])]; \
+prom=next((t for t in d.get('tools',[]) if t['name']=='Prometheus'),{}); \
+pf_ok=prom.get('status')=='up' and prom.get('stats',{}).get('total_targets',0)>0; \
+print('  hint: make observability-port-forward' if not pf_ok else '  port-forwards OK')" \
+		|| echo "  offline"
+	@echo "=== Prometheus (localhost:$(OBS_PF_PROM)) ==="
+	@curl -sf http://localhost:$(OBS_PF_PROM)/-/healthy >/dev/null && echo "  healthy" || echo "  offline — stale PF? run: make observability-port-forward"
+	@echo "=== Loki (localhost:$(OBS_PF_LOKI)) ==="
+	@curl -sf http://localhost:$(OBS_PF_LOKI)/ready >/dev/null && echo "  ready" || echo "  offline — stale PF? run: make observability-port-forward"
 	@echo "=== ChromaDB (localhost:8000) ==="
 	@curl -sf http://localhost:8000/api/v1/heartbeat > /dev/null && echo "  healthy" || echo "  offline"
 	@echo "=== Ollama (localhost:11434) ==="

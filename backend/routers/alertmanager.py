@@ -24,30 +24,38 @@ AlertManager payload shape (subset we use):
   }
 """
 import logging
+import asyncio
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Query
 from pydantic import BaseModel, Field
 
 from backend.agents.triage_agent import TriageAgent
+from backend.integrations import pagerduty, servicenow
+from backend.integrations.kafka_bus import emit_incident
 from backend.integrations.metrics import record_slack, record_triage
 from backend.integrations.slack import post_triage_alert
+from backend.memory.persistence import triage_dedup_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/webhook", tags=["alertmanager"])
 
 _agent = TriageAgent()
 
-# Deduplicating store keyed by (alert_name, namespace).
-# Preserves insertion order (Python 3.7+), newest entries bubble to top via re-insert.
-_recent_triages: dict[tuple[str, str], "RecentTriage"] = {}
+# Deduplicating store keyed by (alert_name, namespace) — Redis or in-memory.
+_recent_triages = triage_dedup_store
 
 
 def get_fire_count(alert_name: str, namespace: str) -> int:
     """Return how many times this alert has fired (from dedup store)."""
-    entry = _recent_triages.get((alert_name, namespace))
-    return entry.fire_count if entry else 1
+    return triage_dedup_store.get_fire_count(alert_name, namespace)
+
+
+def get_recent_triage(alert_name: str, namespace: str):
+    """Return the most recent triage entry for (alert_name, namespace) if present."""
+    return triage_dedup_store.get((alert_name, namespace))
 
 
 # ── Pydantic models for AlertManager payload ──────────────────────────────────
@@ -86,6 +94,8 @@ class RecentTriage(BaseModel):
     escalate: bool
     llm_tier: str
     fire_count: int = 1
+    servicenow_number: str = ""
+    pagerduty_triggered: bool = False
 
 
 # ── Route ─────────────────────────────────────────────────────────────────────
@@ -117,16 +127,42 @@ async def receive_alertmanager(
     )
 
 
+# Namespaces that belong on the SRE Command Center incident strip (not kube-system noise).
+_FLEET_NAMESPACES = frozenset({"synthetic", "observability", "kafka", "sre-ai"})
+
+
 @router.get("/alertmanager/recent", response_model=list[RecentTriage])
-def recent_triages(limit: int = 10) -> list[RecentTriage]:
+def recent_triages(
+    limit: int = 10,
+    scope: str = Query("all", pattern="^(all|fleet|relevant|synthetic)$"),
+) -> list[RecentTriage]:
     """Return deduplicated auto-triaged alerts, newest first, sorted by severity."""
     _SEV = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
-    items = list(_recent_triages.values())
+    fetch_limit = limit * 5 if scope in ("fleet", "relevant", "synthetic") else limit
+    items = triage_dedup_store.list_recent(limit=fetch_limit)
+    if scope in ("fleet", "relevant", "synthetic"):
+        items = [
+            t for t in items
+            if t.namespace in _FLEET_NAMESPACES
+            or (t.alert_name or "").startswith("Synthetic")
+        ]
     items.sort(key=lambda t: (_SEV.get(t.severity, 9), t.triaged_at), reverse=False)
     return items[:limit]
 
 
 # ── Background task ───────────────────────────────────────────────────────────
+
+def _schedule_emit(incident: dict[str, Any]) -> None:
+    """Fire-and-forget async emit from sync background task thread."""
+
+    def _run() -> None:
+        try:
+            asyncio.run(emit_incident(incident))
+        except Exception as exc:
+            logger.warning("Failed to emit incident event: %s", exc)
+
+    threading.Thread(target=_run, daemon=True, name="incident-emit").start()
+
 
 def _triage_alert(alert: AMAlert) -> None:
     alert_name = alert.labels.get("alertname", "UnknownAlert")
@@ -143,27 +179,63 @@ def _triage_alert(alert: AMAlert) -> None:
         record_slack("triage", slack_ok)
 
         # Upsert into deduplication store — same alert+namespace updates in place
-        key = (alert_name, alert.labels.get("namespace", "unknown"))
-        existing = _recent_triages.pop(key, None)
-        _recent_triages[key] = RecentTriage(
+        namespace = alert.labels.get("namespace", "unknown")
+        key = (alert_name, namespace)
+        existing = triage_dedup_store.get(key)
+        summary_text = (result.get("reasoning") or "")[:150]
+        suggested_fix = (
+            " ".join(result["suggested_fix"])
+            if isinstance(result.get("suggested_fix"), list)
+            else (result.get("suggested_fix") or "")
+        )[:250]
+
+        # ── Side-effects on first fire only (avoid duplicate INC/page) ───
+        snow_number = existing.servicenow_number if existing else ""
+        pd_triggered = existing.pagerduty_triggered if existing else False
+        if not existing and severity in ("P1", "P2"):
+            try:
+                created = servicenow.create_incident(
+                    alert_name=alert_name,
+                    namespace=namespace,
+                    severity=severity,
+                    summary=summary_text,
+                    suggested_fix=suggested_fix,
+                    extra={"llm_tier": tier},
+                )
+                snow_number = created or ""
+            except Exception as exc:
+                logger.warning("ServiceNow auto-create failed: %s", exc)
+        if severity == "P1" and not pd_triggered:
+            try:
+                pd_triggered = pagerduty.trigger(
+                    dedup_key=pagerduty.dedup_key_for(alert_name, namespace),
+                    summary=f"[{severity}] {alert_name} in {namespace}",
+                    severity=severity,
+                    custom_details={
+                        "summary": summary_text,
+                        "suggested_fix": suggested_fix,
+                        "pod": alert.labels.get("pod", ""),
+                    },
+                )
+            except Exception as exc:
+                logger.warning("PagerDuty auto-trigger failed: %s", exc)
+
+        entry = RecentTriage(
             alert_name=alert_name,
             severity=severity,
-            summary=(result.get("reasoning") or "")[:150],
-            suggested_fix=(
-                " ".join(result["suggested_fix"])
-                if isinstance(result.get("suggested_fix"), list)
-                else (result.get("suggested_fix") or "")
-            )[:250],
-            namespace=alert.labels.get("namespace", "unknown"),
+            summary=summary_text,
+            suggested_fix=suggested_fix,
+            namespace=namespace,
             pod=alert.labels.get("pod", alert.labels.get("instance", "unknown")),
             triaged_at=datetime.now(timezone.utc).isoformat(),
             escalate=escalated,
             llm_tier=tier,
             fire_count=(existing.fire_count + 1) if existing else 1,
+            servicenow_number=snow_number,
+            pagerduty_triggered=pd_triggered,
         )
-        # Cap at 20 unique entries
-        if len(_recent_triages) > 20:
-            _recent_triages.pop(next(iter(_recent_triages)))
+        triage_dedup_store.upsert(key, entry)
+        _schedule_emit(entry.model_dump())
 
         logger.info(
             "Auto-triage '%s' → %s (confidence=%.2f, escalate=%s, slack=%s)",

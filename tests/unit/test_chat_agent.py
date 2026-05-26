@@ -150,5 +150,5 @@ class TestChatAgentRun:
 
     def test_uses_default_store_when_none_provided(self):
         agent = ChatAgent()
-        from backend.memory.session_store import session_store
+        from backend.memory.persistence import session_store
         assert agent._store is session_store

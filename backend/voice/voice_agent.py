@@ -17,9 +17,10 @@ from typing import Any
 
 from backend.agents.base import BaseAgent
 from backend.agents.chat_agent import ChatAgent
-from backend.memory.session_store import session_store
+from backend.memory.persistence import session_store
 from backend.voice.config import get_voice_settings
 from backend.voice.providers import get_stt_provider, get_tts_provider
+from backend.voice.text_prep import prepare_text_for_speech
 from backend.voice.base import AudioFormat
 
 logger = logging.getLogger(__name__)
@@ -153,8 +154,9 @@ class VoiceAgent(BaseAgent):
     async def _synthesize(self, text: str, tts_provider) -> tuple[bytes, float]:
         """Synthesize text to speech, return (audio_bytes, duration_seconds)."""
         try:
+            spoken = prepare_text_for_speech(text)
             audio_bytes = await tts_provider.synthesize(
-                text,
+                spoken,
                 language=self.cfg.tts_language,
                 gender=self.cfg.tts_gender,
                 rate=self.cfg.tts_speaking_rate,

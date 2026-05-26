@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from backend.config import Settings, get_settings
 from backend.rag.ingestor import ingest_all
+from backend.knowledge.profile_ingest import ingest_profile
 from backend.routers._models import IngestResponse
 
 router = APIRouter(prefix="/api/v1", tags=["knowledge"])
@@ -24,6 +25,21 @@ def ingest_sync():
     try:
         result = ingest_all()
         return {"status": "complete", "ingested": result, "duration_seconds": round(time.time() - start, 2)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/ingest/profile/sync", response_model=IngestResponse)
+def ingest_profile_sync():
+    """Synchronous profile ingestion for recruiter RAG."""
+    start = time.time()
+    try:
+        count = ingest_profile(force=True)
+        return {
+            "status": "complete",
+            "ingested": {"profile": count},
+            "duration_seconds": round(time.time() - start, 2),
+        }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
