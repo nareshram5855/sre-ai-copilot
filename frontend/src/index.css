@@ -804,6 +804,45 @@
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 
+  .recruiter-chat-footer--welcome {
+    box-shadow:
+      0 -1px 0 rgba(45, 212, 191, 0.12),
+      0 -12px 32px rgba(45, 212, 191, 0.08),
+      0 -4px 16px rgba(0, 0, 0, 0.25);
+  }
+
+  .recruiter-chat-input {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1.5px solid rgba(45, 212, 191, 0.38);
+    box-shadow:
+      0 0 0 1px rgba(45, 212, 191, 0.08),
+      0 0 20px rgba(45, 212, 191, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    animation: recruiter-input-glow 3s ease-in-out infinite;
+  }
+
+  .recruiter-chat-input::placeholder {
+    color: rgba(168, 162, 158, 0.72);
+  }
+
+  .recruiter-chat-input:focus {
+    border-color: rgba(45, 212, 191, 0.65);
+    box-shadow:
+      0 0 0 3px rgba(45, 212, 191, 0.14),
+      0 0 28px rgba(45, 212, 191, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    animation: none;
+  }
+
+  .recruiter-chat-input--loading {
+    background: rgba(15, 23, 42, 0.55);
+    border-color: rgba(45, 212, 191, 0.22);
+    box-shadow: none;
+    cursor: wait;
+    opacity: 0.8;
+    animation: none;
+  }
+
   .recruiter-suggest-grid .recruiter-chip {
     min-height: 2.5rem;
     display: -webkit-box;
@@ -839,6 +878,37 @@
 
   .resume-hero-stat:not(:disabled):hover {
     transform: translateY(-1px);
+  }
+
+  .resume-hero-cta-row {
+    gap: 0.5rem;
+  }
+
+  .resume-hero-call-cta {
+    background: linear-gradient(145deg, rgba(28, 25, 23, 0.65), rgba(19, 78, 74, 0.12));
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+  }
+
+  .resume-hero-call-cta:hover {
+    border-color: rgba(45, 212, 191, 0.35);
+    background: linear-gradient(145deg, rgba(19, 78, 74, 0.22), rgba(30, 27, 75, 0.18));
+    color: rgb(255, 255, 255);
+    transform: translateY(-1px);
+  }
+
+  .resume-hero-chat-cta {
+    background: linear-gradient(135deg, rgba(13, 148, 136, 0.92), rgba(79, 70, 229, 0.82));
+    border: 1px solid rgba(45, 212, 191, 0.35);
+    box-shadow: 0 4px 16px rgba(45, 212, 191, 0.14);
+  }
+
+  .resume-hero-chat-cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(45, 212, 191, 0.22);
+  }
+
+  .resume-hero-chat-hint {
+    text-wrap: pretty;
   }
 
   .linkedin-rec-card {
@@ -1207,6 +1277,24 @@
   50% {
     opacity: 0.65;
     box-shadow: inset 0 0 32px rgba(167, 139, 250, 0.12);
+  }
+}
+
+@keyframes recruiter-input-glow {
+  0%,
+  100% {
+    border-color: rgba(45, 212, 191, 0.32);
+    box-shadow:
+      0 0 0 1px rgba(45, 212, 191, 0.06),
+      0 0 16px rgba(45, 212, 191, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  50% {
+    border-color: rgba(45, 212, 191, 0.52);
+    box-shadow:
+      0 0 0 1px rgba(45, 212, 191, 0.12),
+      0 0 28px rgba(45, 212, 191, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 }
 
@@ -1709,43 +1797,193 @@ body.demo-tour-active main {
 }
 
 @media print {
-  body {
+  @page {
+    size: letter portrait;
+    margin: 0.5in 0.6in;
+  }
+
+  /* ── Hard reset — strip all shadows and decorations ── */
+  *, *::before, *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── Root canvas → white ── */
+  html, body, #root, #root > div {
     background: white !important;
     color: #111 !important;
+    font-size: 10pt !important;
+    line-height: 1.45 !important;
+    overflow: visible !important;
+    height: auto !important;
   }
 
-  .resume-page {
-    padding: 0 !important;
-    max-width: 100% !important;
-  }
+  /* ── Hide all UI chrome ── */
+  body > *:not(#root) { display: none !important; }
 
+  /* AppTopBar, NavDrawer, ChatWidget, all fixed/sticky overlays */
+  header, nav, aside,
   .resume-no-print,
-  header[class*="h-12"],
-  nav,
-  [class*="ChatWidget"],
-  [class*="fixed"] {
+  .fixed, .sticky,
+  [class*="ChatWidget"], [class*="VoiceButton"],
+  [class*="DemoLauncher"], [class*="RecruiterAsk"],
+  [class*="RecruiterFeedback"], [class*="RecruiterChat"],
+  [class*="LinkedInRecommend"], [class*="NareshThinkingSpeech"] {
     display: none !important;
   }
 
-  .resume-document .panel-card {
+  /* ── Page shell → full width, no padding ── */
+  .resume-page {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .resume-document {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* ── Show print-only header ── */
+  .print\:block { display: block !important; }
+
+  /* ── NUCLEAR: force white bg + dark text on ALL resume content ── */
+  .resume-document,
+  .resume-document * {
     background: white !important;
-    border-color: #ddd !important;
-    box-shadow: none !important;
-    break-inside: avoid;
-  }
-
-  .resume-document h1,
-  .resume-document h2,
-  .resume-document h3,
-  .resume-document p,
-  .resume-document li,
-  .resume-document span {
+    background-color: white !important;
+    background-image: none !important;
     color: #111 !important;
+    border-color: #dde4ef !important;
   }
 
-  .resume-document .text-indigo-300,
-  .resume-document .text-emerald-300,
-  .resume-document .text-amber-300 {
-    color: #333 !important;
+  /* ── Print header (name block) ── */
+  .resume-document .print\:block {
+    display: block !important;
+    margin-bottom: 16pt !important;
+    padding-bottom: 10pt !important;
+    border-bottom: 2px solid #1e3a5f !important;
   }
+  .resume-document .print\:block h1 {
+    font-size: 22pt !important;
+    font-weight: 800 !important;
+    color: #0f1f3d !important;
+    letter-spacing: -0.02em !important;
+    margin: 0 0 3pt !important;
+  }
+  .resume-document .print\:block p:first-of-type {
+    font-size: 11pt !important;
+    color: #1e3a5f !important;
+    font-weight: 600 !important;
+    margin: 2pt 0 !important;
+  }
+  .resume-document .print\:block p:last-of-type {
+    font-size: 9pt !important;
+    color: #444 !important;
+    margin: 2pt 0 !important;
+  }
+
+  /* ── Section headings (h2 rendered by SectionTitle) ── */
+  .resume-document h2 {
+    font-size: 8.5pt !important;
+    font-weight: 700 !important;
+    color: #1e3a5f !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.12em !important;
+    border-bottom: 1.5px solid #1e3a5f !important;
+    padding-bottom: 3pt !important;
+    margin-bottom: 8pt !important;
+  }
+
+  /* ── Sub-headings ── */
+  .resume-document h3 {
+    font-size: 10pt !important;
+    font-weight: 600 !important;
+    color: #0f1f3d !important;
+  }
+
+  /* ── Cards ── */
+  .resume-document .panel-card {
+    border: 1px solid #c8d5e8 !important;
+    border-radius: 4px !important;
+    padding: 8pt 10pt !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 6pt !important;
+  }
+
+  /* ── Experience / environment footer ── */
+  .resume-document [class*="border-t"] {
+    border-top: 1px solid #dde4ef !important;
+  }
+
+  /* ── Skill pills: rounded-md spans (SkillPills) + rounded-full (ProficiencyBadge) ── */
+  .resume-document span[class*="rounded"] {
+    background: #eef2f8 !important;
+    border: 1px solid #b8cbe0 !important;
+    color: #1e3a5f !important;
+    font-size: 8pt !important;
+  }
+
+  /* ── Proficiency badge — expert green, advanced navy ── */
+  .resume-document span[class*="emerald"] {
+    background: #f0fdf4 !important;
+    border-color: #86efac !important;
+    color: #14532d !important;
+  }
+
+  /* ── Bullet accent dots ── */
+  .resume-document li > span:first-child {
+    color: #1e3a5f !important;
+  }
+
+  /* ── Sub-labels: company, period, location ── */
+  .resume-document p[class*="text-indigo"],
+  .resume-document p[class*="text-teal"] {
+    color: #1e3a5f !important;
+  }
+
+  /* ── Muted text: gray-400/500/600 → #444 ── */
+  .resume-document p[class*="text-gray"],
+  .resume-document span[class*="text-gray"],
+  .resume-document li[class*="text-gray"] {
+    color: #444 !important;
+  }
+
+  /* ── Links ── */
+  .resume-document a {
+    color: #1e3a5f !important;
+    text-decoration: none !important;
+  }
+
+  /* ── Icons → navy ── */
+  .resume-document svg {
+    color: #1e3a5f !important;
+    opacity: 1 !important;
+  }
+
+  /* ── Grids — preserve columns ── */
+  .resume-document .grid { display: grid !important; }
+  .resume-document .sm\:grid-cols-2 { grid-template-columns: repeat(2, 1fr) !important; }
+  .resume-document .lg\:grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; }
+
+  /* ── Section spacing + page breaks ── */
+  .resume-document > article > section,
+  .resume-document section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 12pt !important;
+  }
+
+  /* ── Spacing helpers ── */
+  .resume-document .space-y-4 > * + *,
+  .resume-document .space-y-5 > * + *,
+  .resume-document .space-y-6 > * + * {
+    margin-top: 8pt !important;
+  }
+
+  /* ── Summary "show more" list — always visible in print ── */
+  .resume-document ul.hidden { display: block !important; }
 }
