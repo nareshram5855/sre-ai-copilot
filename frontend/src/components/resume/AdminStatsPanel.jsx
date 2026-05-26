@@ -19,8 +19,28 @@ export function AdminStatsPanel({ onClose }) {
     setError("");
     try {
       const res = await fetch(`/api/v1/recruiter/admin/stats?token=${encodeURIComponent(t)}`);
-      if (res.status === 401) { setError("Invalid token"); return; }
-      if (!res.ok) { setError("Failed to load stats"); return; }
+      if (res.status === 401) {
+        setError("Invalid token");
+        return;
+      }
+      if (res.status === 503) {
+        let msg = "Analytics not configured on server (ADMIN_TOKEN missing)";
+        try {
+          const body = await res.json();
+          if (body?.detail) msg = String(body.detail);
+        } catch { /* ignore */ }
+        setError(msg);
+        return;
+      }
+      if (!res.ok) {
+        let msg = `Failed to load stats (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body?.detail) msg = String(body.detail);
+        } catch { /* ignore */ }
+        setError(msg);
+        return;
+      }
       setStats(await res.json());
       sessionStorage.setItem(SESSION_KEY, t);
     } catch {

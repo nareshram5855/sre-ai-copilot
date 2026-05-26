@@ -384,6 +384,32 @@ def test_recruiter_stats_endpoint():
     assert data["unique_views"] >= 1
 
 
+@patch("backend.routers.recruiter.get_settings")
+def test_admin_stats_invalid_token(mock_get_settings):
+    mock_get_settings.return_value.admin_token = "secret-admin"
+    r = client.get("/api/v1/recruiter/admin/stats?token=wrong")
+    assert r.status_code == 401
+
+
+@patch("backend.routers.recruiter.get_settings")
+def test_admin_stats_not_configured(mock_get_settings):
+    mock_get_settings.return_value.admin_token = ""
+    r = client.get("/api/v1/recruiter/admin/stats?token=anything")
+    assert r.status_code == 503
+
+
+@patch("backend.routers.recruiter.get_settings")
+def test_admin_stats_success(mock_get_settings):
+    mock_get_settings.return_value.admin_token = "secret-admin"
+    client.post("/api/v1/recruiter/view", json={"session_id": "admin-sess"})
+    r = client.get("/api/v1/recruiter/admin/stats?token=secret-admin")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total_views"] >= 1
+    assert "daily_views" in data
+    assert "recent_sessions" in data
+
+
 def test_recruiter_feedback_submission():
     r = client.post(
         "/api/v1/recruiter/feedback",

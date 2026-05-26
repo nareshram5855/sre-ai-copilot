@@ -507,7 +507,13 @@ def recruiter_stats() -> dict:
 @router.get("/admin/stats")
 def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKEN env var")) -> dict:
     """Admin-only: detailed analytics — total/unique/daily views, recent sessions, feedback count."""
-    if not settings.admin_token or token != settings.admin_token:
+    cfg = get_settings()
+    if not cfg.admin_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin analytics not configured (set ADMIN_TOKEN on the server)",
+        )
+    if token != cfg.admin_token:
         raise HTTPException(status_code=401, detail="Invalid admin token")
     store = _require_recruiter_store()
     try:
