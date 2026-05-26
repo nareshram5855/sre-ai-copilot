@@ -517,7 +517,15 @@ def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKE
         return stats
     except Exception as e:
         logger.error("Failed to fetch recruiter stats: %s", str(e), exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        # Return empty stats gracefully instead of 500 error
+        return {
+            "total_views": 0,
+            "unique_views": 0,
+            "today_views": 0,
+            "feedback_count": 0,
+            "recent_sessions": [],
+            "daily_views": [],
+        }
 
 
 @router.post("/feedback")
