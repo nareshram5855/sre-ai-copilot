@@ -17,7 +17,7 @@ export const ARCHITECTURE_SECTIONS = [
 export const SIXTY_SECOND_SUMMARY = {
   headline: "How it works in 60 seconds",
   intro:
-    "An AI copilot for on-call engineers: it connects alerts, live telemetry, and runbooks in one screen — then helps triage and fix incidents with human approval on every risky action.",
+    "A personal SRE bot I built for on-call engineers: it connects alerts, live telemetry, and runbooks in one screen — then helps triage and fix incidents with human approval on every risky action.",
   bullets: [
     {
       label: "Problem",

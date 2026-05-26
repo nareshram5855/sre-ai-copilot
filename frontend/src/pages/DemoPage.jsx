@@ -8,6 +8,7 @@ import { PageShell } from "../components/layout/PageShell.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { DEMO_LANDING, DEMO_VALUE_PROPS, DEMO_TOUR_STEPS } from "../data/demoTourContent.js";
 import { DEMO_METRICS, FEATURED_PROJECT, TECH_STACK_COMPARISON } from "../data/resumeContent.js";
+import { HeroTechStack } from "../components/demo/ArchitectureExplainer.jsx";
 import { startDemoTour } from "../utils/demoTour.js";
 
 function DemoStatusBadge() {
@@ -116,7 +117,7 @@ export function DemoPage() {
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">{DEMO_LANDING.title}</h1>
           <p className="text-sm sm:text-base text-stone-400 mt-3 leading-relaxed max-w-2xl">{DEMO_LANDING.subtitle}</p>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-6">
+          <div className="grid grid-cols-3 gap-2 mt-6">
             {DEMO_METRICS.map((m) => (
               <div
                 key={m.label}
@@ -127,6 +128,8 @@ export function DemoPage() {
               </div>
             ))}
           </div>
+
+          <HeroTechStack className="mt-4" />
 
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 mt-8">
             <button

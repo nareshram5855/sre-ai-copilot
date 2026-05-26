@@ -6,10 +6,19 @@ RESUME_PROFILE = {
     "location": "Irving, TX",
     "email": "nareshvusiri5855@gmail.com",
     "phone": "+1 (737) 224-1812",
+    "availability": "Available for SRE · Platform · DevOps roles",
     "tagline": (
         "8+ years building reliable cloud platforms on AWS & Azure — Kubernetes, GitOps, observability, "
         "and AI-assisted automation for enterprise IAM, data, and telecom workloads."
     ),
+}
+
+RESUME_CTA = {
+    "introCallLabel": "Schedule 30-min intro call",
+    "introCallSubject": "30-minute intro call",
+    "calendlyUrl": "",
+    "chatLabel": "Chat with Naresh",
+    "chatHint": "Verified answers · first person · live on this profile",
 }
 
 RESUME_SUMMARY = (
@@ -330,15 +339,17 @@ RESUME_LINKEDIN = {
 
 FEATURED_PROJECT = {
     "name": "SRE AI Copilot",
-    "role": "Personal R&D portfolio project (independent demo — not employer production work)",
+    "badge": "Personal SRE bot · R&D project",
+    "role": "Independent portfolio build — not employer production work",
     "period": "2025 – Present",
     "architecture_link": "/docs",
     "repo_label": "github.com/nareshram5855/sre-ai-copilot",
     "repo_url": "https://github.com/nareshram5855/sre-ai-copilot",
     "summary": (
-        "On-prem AI copilot that triages AlertManager webhooks, retrieves runbooks via RAG, "
-        "executes Kubernetes remediation with human approval gates, and learns from every resolution — "
-        "demonstrating SRE + AI skillset for interview presentations."
+        "Personal R&D project I built to explore AI-assisted incident response: AlertManager triage, "
+        "unified observability across Prometheus, Loki, and OTEL, RAG-backed runbooks, and "
+        "human-gated Kubernetes remediation — validating SRE + AI platform patterns outside my "
+        "Fortune-scale client engagements at Citi, BofA, Verizon, and Toyota."
     ),
     "highlights": [
         {"label": "Multi-agent LangGraph", "detail": "Seven specialist agents (Triage, Chat, Runbook, RCA, Executor, Supervisor, Learning) with LangGraph checkpointing and Redis/SQLite persistence fallbacks."},
@@ -346,15 +357,23 @@ FEATURED_PROJECT = {
         {"label": "Event-driven architecture", "detail": "Kafka (aiokafka) for durable incident/anomaly fan-out with SSE fallback; Redis for sessions, dedup, and LangGraph checkpoints."},
         {"label": "Autonomous remediation", "detail": "ExecutorAgent: parallel K8s gather → LLM plan → write actions gated by human approval; append-only audit trail; ServiceNow & PagerDuty integration hooks."},
         {"label": "Enterprise patterns", "detail": "API-key auth, GitOps-ready manifests, GitHub Actions CD to Minikube, architecture docs at /docs, app profiler at /profiler."},
-        {"label": "Interview-ready UI", "detail": "Command Center, Observe, Incident Analysis, Playbooks, Audit log, Resume page — full enterprise dark-theme SRE dashboard."},
+        {"label": "Operator dashboard", "detail": "Command Center, Observe, Incident Analysis, Playbooks, Audit log, and Resume — enterprise-grade SRE workspace with live SSE fleet health."},
     ],
     "tech_stack": [
         "React 18 · Vite · TailwindCSS",
         "FastAPI · Python 3.11+",
         "LangGraph · LangChain · Ollama",
         "ChromaDB · Redis · SQLite · Kafka",
-        "Prometheus · Loki · AlertManager",
-        "Kubernetes · Minikube · GitHub Actions",
+        "Prometheus · Loki · AlertManager · OTel",
+        "Kubernetes · Minikube · GitHub Actions · SSE",
+    ],
+    "tech_stack_categories": [
+        {"category": "Frontend", "tools": ["React 18", "Vite", "TailwindCSS"]},
+        {"category": "Backend", "tools": ["FastAPI", "Python 3.11+", "Gunicorn"]},
+        {"category": "AI / agents", "tools": ["LangGraph", "LangChain", "Ollama", "ChromaDB"]},
+        {"category": "Observability", "tools": ["Prometheus", "Loki", "AlertManager", "OTel"]},
+        {"category": "Platform", "tools": ["Kubernetes", "Minikube", "Kafka", "Redis", "SQLite"]},
+        {"category": "Delivery", "tools": ["GitHub Actions", "Docker", "SSE", "Make"]},
     ],
 }
 
@@ -580,10 +599,10 @@ RESUME_CERTIFICATIONS = [
 ]
 
 RESUME_STATS = [
-    {"label": "Experience", "value": "8+", "sub": "Years DevOps / SRE"},
+    {"label": "Experience", "value": "8+", "sub": "Production SRE & DevOps"},
     {"label": "Enterprise", "value": "6", "sub": "Fortune-scale clients"},
-    {"label": "Certification", "value": "AWS", "sub": "DevOps Engineer Pro"},
-    {"label": "Portfolio", "value": "Live", "sub": "SRE AI Copilot demo"},
+    {"label": "Certification", "value": "AWS", "sub": "DevOps Engineer — Pro"},
+    {"label": "Portfolio", "value": "Live", "sub": "Personal SRE bot · R&D"},
 ]
 
 # Observability career arc — lead with DIY tooling when recruiters ask about monitoring/APM/logging.
@@ -922,7 +941,6 @@ DEMO_METRICS = [
     {"label": "LangGraph agents", "value": "7"},
     {"label": "Synthetic microservices", "value": "7"},
     {"label": "Automated tests", "value": "245+"},
-    {"label": "Real-time stack", "value": "Kafka+Redis+SSE"},
 ]
 
 RESUME_LINKS = [

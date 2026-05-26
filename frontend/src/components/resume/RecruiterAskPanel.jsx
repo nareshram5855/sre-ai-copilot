@@ -8,7 +8,6 @@ import {
 import {
   detectQuestionTopic,
   followUpSectionLabel,
-  getInitialSuggestedQuestions,
   getThoughtMood,
   pickFollowUpChips,
   sanitizeRecruiterAnswer,
@@ -544,9 +543,7 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
 
   const inputPlaceholder = loading
     ? "Waiting for Naresh's reply…"
-    : "Ask about client experience — e.g. What did you do at Citi?";
-
-  const initialChips = useMemo(() => getInitialSuggestedQuestions(4), []);
+    : "Paste a job description or ask about client experience…";
 
   const lastTurnStartIndex = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -961,17 +958,6 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
               </span>
             )}
           </div>
-          {!hasConversation && (
-            <>
-              <p className="text-[13px] text-stone-400 mt-1.5 leading-[1.55] max-w-2xl">
-                Ask about my client work, skills, or this demo — I answer from my verified profile only.
-              </p>
-              <p className="text-[10px] text-stone-500 mt-1.5 flex items-center gap-1.5">
-                <ShieldCheck size={11} className="text-teal-400/75 shrink-0" />
-                Employer work and portfolio R&amp;D stay clearly separate
-              </p>
-            </>
-          )}
         </div>
         <div className="flex items-center gap-0.5 shrink-0 -mt-0.5 -mr-1">
           <button
@@ -1004,7 +990,6 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
         )}
         {messages.length === 0 ? (
           <RecruiterChatWelcome
-            starters={initialChips}
             onAsk={ask}
             onJdTemplate={fillJdTemplate}
             loading={loading}
@@ -1055,7 +1040,13 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
       )}
       </div>
 
-      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 border-t border-teal-500/10 pt-2.5 shrink-0 bg-recruiter-navy/20 recruiter-chat-footer">
+      <div
+        className={`px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 border-t pt-2.5 shrink-0 recruiter-chat-footer ${
+          messages.length === 0
+            ? "recruiter-chat-footer--welcome border-teal-400/25 bg-gradient-to-b from-teal-950/20 to-recruiter-navy/30"
+            : "border-teal-500/10 bg-recruiter-navy/20"
+        }`}
+      >
         {messages.length > 0 && lastFollowUps.length > 0 && !loading && (
           <div className="space-y-1 min-w-0">
             <p className="text-[10px] font-medium text-stone-500 tracking-wide">
@@ -1092,10 +1083,8 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder={loading ? "Waiting for Naresh's reply…" : "Paste role requirements or ask a hiring manager question…"}
-              className={`flex-1 text-[14px] px-3.5 py-2.5 rounded-xl border text-stone-100 placeholder:text-stone-500 focus:outline-none transition-all resize-y min-h-[5.5rem] max-h-40 ${
-                loading
-                  ? "bg-recruiter-navy/60 border-teal-500/25 cursor-wait opacity-80"
-                  : "bg-recruiter-navy/40 border-stone-700/45 focus:border-teal-400/40 focus:ring-1 focus:ring-teal-400/20"
+              className={`recruiter-chat-input flex-1 text-[14px] px-3.5 py-2.5 rounded-xl border text-stone-100 placeholder:text-stone-400 focus:outline-none transition-all resize-y min-h-[5.5rem] max-h-40 ${
+                loading ? "recruiter-chat-input--loading" : ""
               }`}
               disabled={loading}
               aria-busy={loading}
@@ -1107,10 +1096,8 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder={inputPlaceholder}
-            className={`flex-1 text-[15px] px-3.5 py-2.5 rounded-xl border text-stone-100 placeholder:text-stone-500 focus:outline-none transition-all ${
-              loading
-                ? "bg-recruiter-navy/60 border-teal-500/25 cursor-wait opacity-80"
-                : "bg-recruiter-navy/40 border-stone-700/45 focus:border-teal-400/40 focus:ring-1 focus:ring-teal-400/20"
+            className={`recruiter-chat-input flex-1 text-[15px] px-3.5 py-3 rounded-xl border text-stone-100 placeholder:text-stone-400 focus:outline-none transition-all ${
+              loading ? "recruiter-chat-input--loading" : ""
             }`}
             disabled={loading}
             aria-busy={loading}

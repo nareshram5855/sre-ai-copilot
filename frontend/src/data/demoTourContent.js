@@ -103,11 +103,11 @@ export const DEMO_VALUE_PROPS = [
 ];
 
 export const DEMO_LANDING = {
-  eyebrow: "Personal R&D · Portfolio demo",
+  eyebrow: "Personal SRE bot · R&D project",
   title: "SRE AI Copilot",
   subtitle:
-    "A production-grade AI ops platform I built to demonstrate SRE + platform engineering — " +
-    "separate from my Fortune-scale client work at Citi, BofA, Verizon, and Toyota.",
+    "Personal R&D platform exploring AI-assisted incident response — LangGraph agents, unified observability, " +
+    "RAG runbooks, and human-gated remediation. Built independently of my Fortune-scale client work at Citi, BofA, Verizon, and Toyota.",
   tourCta: "Start 5-minute hiring manager tour",
   tourSub: "Guided architecture walkthrough · stays on this page · no setup",
   fullDemoCta: "Open full interactive demo",

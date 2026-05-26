@@ -8,7 +8,7 @@ import {
   shouldAutoExpandDemo,
   startDemoTour,
 } from "../../utils/demoTour.js";
-import { ArchitectureExplainer } from "./ArchitectureExplainer.jsx";
+import { ArchitectureExplainer, HeroTechStack } from "./ArchitectureExplainer.jsx";
 
 function oneLineSummary(text, maxLen = 140) {
   const trimmed = text.replace(/\s+/g, " ").trim();
@@ -106,17 +106,22 @@ export function DemoLauncher() {
             <div className="demo-launcher-teaser">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="text-lg sm:text-xl font-bold text-white">{FEATURED_PROJECT.name}</h3>
-                  <p className="text-xs text-indigo-300/90 mt-1">{FEATURED_PROJECT.period}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg sm:text-xl font-bold text-white">{FEATURED_PROJECT.name}</h3>
+                    {FEATURED_PROJECT.badge && (
+                      <span className="demo-launcher-teaser-badge shrink-0">{FEATURED_PROJECT.badge}</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-indigo-300/90 mt-1">{FEATURED_PROJECT.role}</p>
+                  <p className="text-[11px] text-gray-500 font-mono mt-0.5">{FEATURED_PROJECT.period}</p>
                 </div>
-                <span className="demo-launcher-teaser-badge shrink-0">Portfolio R&D</span>
               </div>
 
               <p className="text-sm text-gray-300 leading-relaxed mt-3 max-w-2xl">
-                {oneLineSummary(FEATURED_PROJECT.summary)}
+                {oneLineSummary(FEATURED_PROJECT.summary, 180)}
               </p>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+              <div className="grid grid-cols-3 gap-2 mt-4">
                 {DEMO_METRICS.map((m) => (
                   <div
                     key={m.label}
@@ -127,6 +132,8 @@ export function DemoLauncher() {
                   </div>
                 ))}
               </div>
+
+              <HeroTechStack compact className="mt-3" />
 
               <div className="flex flex-col sm:flex-row flex-wrap gap-2.5 mt-5 resume-no-print">
                 <button

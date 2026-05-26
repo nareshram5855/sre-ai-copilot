@@ -85,6 +85,39 @@ function scrollToSection(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+export function HeroTechStack({ compact = false, className = "" }) {
+  const categories = FEATURED_PROJECT.techStackCategories ?? [];
+  return (
+    <div className={`arch-hero-stack ${className}`}>
+      <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-stone-500 mb-2">
+        Tech stack
+      </p>
+      <div className={`grid gap-2 ${compact ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
+        {categories.map((cat) => (
+          <div
+            key={cat.category}
+            className="rounded-lg border border-sre-border/45 bg-sre-bg/30 px-2.5 py-2"
+          >
+            <p className="text-[9px] font-bold uppercase tracking-wide text-indigo-300/80 mb-1.5">
+              {cat.category}
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {cat.tools.map((tool) => (
+                <span
+                  key={tool}
+                  className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sre-bg border border-sre-border/50 text-gray-400"
+                >
+                  {tool}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SectionHeading({ id, title, subtitle }) {
   return (
     <div id={id} className="scroll-mt-24 mb-4">
@@ -348,8 +381,15 @@ export function ArchitectureExplainer({ onStartTour }) {
       <div id="architecture-hero" className="scroll-mt-24">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
           <div>
-            <h3 className="text-xl font-bold text-white">{FEATURED_PROJECT.name}</h3>
-            <p className="text-sm text-indigo-300/95 mt-0.5">{FEATURED_PROJECT.role}</p>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h3 className="text-xl font-bold text-white">{FEATURED_PROJECT.name}</h3>
+              {FEATURED_PROJECT.badge && (
+                <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-teal-500/30 text-teal-300/95 bg-teal-950/30">
+                  {FEATURED_PROJECT.badge}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-indigo-300/95">{FEATURED_PROJECT.role}</p>
           </div>
           <span className="text-xs text-gray-500 font-mono">{FEATURED_PROJECT.period}</span>
         </div>
@@ -360,7 +400,7 @@ export function ArchitectureExplainer({ onStartTour }) {
           pane — so on-call engineers build context without console hopping.
         </p>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5">
+        <div className="grid grid-cols-3 gap-2 mt-5">
           {DEMO_METRICS.map((m) => (
             <div
               key={m.label}
@@ -371,6 +411,8 @@ export function ArchitectureExplainer({ onStartTour }) {
             </div>
           ))}
         </div>
+
+        <HeroTechStack className="mt-4" />
 
         <nav
           className="flex flex-wrap gap-1.5 mt-5 resume-no-print"

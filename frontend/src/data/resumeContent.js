@@ -9,10 +9,26 @@ export const RESUME_PROFILE = {
   location: "Irving, TX",
   email: "nareshvusiri5855@gmail.com",
   phone: "+1 (737) 224-1812",
+  availability: "Available for SRE · Platform · DevOps roles",
   tagline:
     "8+ years building reliable cloud platforms on AWS & Azure — Kubernetes, GitOps, observability, " +
     "and AI-assisted automation for enterprise IAM, data, and telecom workloads.",
 };
+
+/** Recruiter / HM CTAs — set calendlyUrl to your booking link; mailto fallback when empty */
+export const RESUME_CTA = {
+  introCallLabel: "Schedule 30-min intro call",
+  introCallSubject: "30-minute intro call",
+  calendlyUrl: "",
+  chatLabel: "Chat with Naresh",
+  chatHint: "Verified answers · first person · live on this profile",
+};
+
+export function getIntroCallUrl() {
+  if (RESUME_CTA.calendlyUrl?.trim()) return RESUME_CTA.calendlyUrl.trim();
+  const subject = encodeURIComponent(RESUME_CTA.introCallSubject);
+  return `mailto:${RESUME_PROFILE.email}?subject=${subject}`;
+}
 
 export const RESUME_SUMMARY =
   "Experienced DevOps/Cloud Engineer with 8 years of expertise in software development processes. Adept at system designing, deploying, and maintaining various applications and infrastructure solutions, both on-premises and in the cloud, using enterprise cloud services like Azure and AWS. Skilled in Infrastructure as Code (IaC) for designing robust and scalable infrastructure, including platform design. Proficient in project setup, build automation, and continuous integration/continuous deployment (CI/CD) processes. Known for quick learning pace and adaptability to emerging technologies. Dedicated to delivering high-quality solutions with a proven ability to adapt to changing environments.";
@@ -327,15 +343,17 @@ export const RESUME_LINKEDIN = {
 
 export const FEATURED_PROJECT = {
   name: "SRE AI Copilot",
-  role: "Personal R&D portfolio project (independent demo — not employer production work)",
+  badge: "Personal SRE bot · R&D project",
+  role: "Independent portfolio build — not employer production work",
   period: "2025 – Present",
   architectureLink: "/docs",
   repoLabel: "github.com/nareshram5855/sre-ai-copilot",
   repoUrl: "https://github.com/nareshram5855/sre-ai-copilot",
   summary:
-    "On-prem AI copilot that triages AlertManager webhooks, retrieves runbooks via RAG, " +
-    "executes Kubernetes remediation with human approval gates, and learns from every resolution — " +
-    "demonstrating SRE + AI skillset for interview presentations.",
+    "Personal R&D project I built to explore AI-assisted incident response: AlertManager triage, " +
+    "unified observability across Prometheus, Loki, and OTEL, RAG-backed runbooks, and " +
+    "human-gated Kubernetes remediation — validating SRE + AI platform patterns outside my " +
+    "Fortune-scale client engagements at Citi, BofA, Verizon, and Toyota.",
   highlights: [
     {
       label: "Multi-agent LangGraph",
@@ -368,10 +386,10 @@ export const FEATURED_PROJECT = {
         "architecture docs at /docs, app profiler at /profiler.",
     },
     {
-      label: "Interview-ready UI",
+      label: "Operator dashboard",
       detail:
-        "Command Center, Observe, Incident Analysis, Playbooks, Audit log, Resume page — " +
-        "full enterprise dark-theme SRE dashboard.",
+        "Command Center, Observe, Incident Analysis, Playbooks, Audit log, and Resume — " +
+        "enterprise-grade SRE workspace with live SSE fleet health.",
     },
   ],
   techStack: [
@@ -379,8 +397,16 @@ export const FEATURED_PROJECT = {
     "FastAPI · Python 3.11+",
     "LangGraph · LangChain · Ollama",
     "ChromaDB · Redis · SQLite · Kafka",
-    "Prometheus · Loki · AlertManager",
-    "Kubernetes · Minikube · GitHub Actions",
+    "Prometheus · Loki · AlertManager · OTel",
+    "Kubernetes · Minikube · GitHub Actions · SSE",
+  ],
+  techStackCategories: [
+    { category: "Frontend", tools: ["React 18", "Vite", "TailwindCSS"] },
+    { category: "Backend", tools: ["FastAPI", "Python 3.11+", "Gunicorn"] },
+    { category: "AI / agents", tools: ["LangGraph", "LangChain", "Ollama", "ChromaDB"] },
+    { category: "Observability", tools: ["Prometheus", "Loki", "AlertManager", "OTel"] },
+    { category: "Platform", tools: ["Kubernetes", "Minikube", "Kafka", "Redis", "SQLite"] },
+    { category: "Delivery", tools: ["GitHub Actions", "Docker", "SSE", "Make"] },
   ],
 };
 
@@ -589,15 +615,20 @@ export const RECRUITER_EMPLOYER_QUICK_ASK = [
   { label: "BofA", question: "Walk me through your Bank of America platform work" },
   { label: "Verizon", question: "What Kubernetes and cloud work did you do at Verizon?" },
   { label: "Toyota", question: "What data platform and AWS work did you do at Toyota?" },
-  { label: "Paste JD", question: null, jd: true },
+  {
+    label: "Check role fit",
+    question: null,
+    jd: true,
+    hint: "Share your role requirements — I'll map fit against my verified profile",
+  },
 ];
 
 /** Key metrics for hero cards on /resume */
 export const RESUME_STATS = [
-  { label: "Experience", value: "8+", sub: "Years DevOps / SRE" },
+  { label: "Experience", value: "8+", sub: "Production SRE & DevOps" },
   { label: "Enterprise", value: "6", sub: "Fortune-scale clients" },
-  { label: "Certification", value: "AWS", sub: "DevOps Engineer Pro" },
-  { label: "Portfolio", value: "Live", sub: "SRE AI Copilot demo" },
+  { label: "Certification", value: "AWS", sub: "DevOps Engineer — Pro" },
+  { label: "Portfolio", value: "Live", sub: "Personal SRE bot · R&D" },
 ];
 
 /** Highlight cards for recruiters — quick scan */
@@ -693,7 +724,6 @@ export const DEMO_METRICS = [
   { label: "LangGraph agents", value: "7" },
   { label: "Synthetic microservices", value: "7" },
   { label: "Automated tests", value: "245+" },
-  { label: "Real-time stack", value: "Kafka+Redis+SSE" },
 ];
 
 /** Verified employer names — used for chat highlighting (matches backend RAG scope) */
