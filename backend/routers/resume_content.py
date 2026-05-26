@@ -745,6 +745,41 @@ RESUME_BEHAVIORAL_STORIES = [
             "approach; migrated to a cleaner Vault integration later."
         ),
     },
+    {
+        "question": "Tell me about a challenge involving network isolation or cloud security architecture.",
+        "theme": "network_isolation",
+        "skills": [
+            "aws privatelink",
+            "kubernetes networkpolicies",
+            "eks",
+            "mongodb atlas",
+            "network isolation",
+            "multi-tenant",
+            "jenkins",
+            "cloud security",
+            "vpc",
+        ],
+        "title": "Multi-tenant Jenkins on EKS — MongoDB Atlas isolation via AWS PrivateLink",
+        "situation": (
+            "Multiple teams shared a Jenkins platform running on AWS EKS, each with their own dedicated "
+            "Jenkins controller deployed via Jenkins Operator in separate namespaces. Each controller needed "
+            "to connect to its own MongoDB Atlas cluster. The hard requirement was strict network isolation — "
+            "no controller should be able to reach another team's database."
+        ),
+        "action": (
+            "Evaluated VPC peering but ruled it out because it would expose entire VPC CIDRs. Chose AWS "
+            "PrivateLink (Private Endpoints) instead — created separate PrivateLink endpoints for each "
+            "MongoDB Atlas cluster and applied Kubernetes NetworkPolicies in each namespace to restrict "
+            "outbound traffic so only the respective Jenkins controller could reach its own Atlas endpoint. "
+            "This enforced isolation at both the network layer (PrivateLink) and the Kubernetes layer (NetworkPolicies)."
+        ),
+        "result": (
+            "Successfully achieved strict network isolation between teams — no cross-team database access was "
+            "possible. Trade-off: managing multiple PrivateLink endpoints increased operational overhead and cost. "
+            "The experience reinforced my understanding of the balance between security, isolation, and operational "
+            "complexity in multi-tenant cloud environments."
+        ),
+    },
 ]
 
 RESUME_ACHIEVEMENTS = [

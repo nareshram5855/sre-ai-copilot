@@ -642,7 +642,7 @@ export const RESUME_ACHIEVEMENTS = [
   {
     title: "Enterprise data platform at Bank of America",
     detail:
-      "Architected workflow-driven loss forecasting platform for GRA regulatory team — multi-tiered distributed compute (Hadoop/Spark), Azure Databricks migration, Kafka event streaming, and OpenShift/AKS CI/CD. Led a cross-functional platform engineering team.",
+      "Architected workflow-driven loss forecasting platform for GRA regulatory team — multi-tiered distributed compute on Hadoop/Spark, Kafka event streaming, OpenShift/AKS CI/CD, and Azure cloud migration. Led the cross-functional platform engineering team.",
     icon: "git",
   },
   {
@@ -871,8 +871,4 @@ export const RECRUITER_FOLLOW_UP_POOLS = {
 export const RESUME_LINKS = [
   { label: "LinkedIn", url: "https://linkedin.com/in/nareshvusiri", icon: "linkedin" },
   { label: "GitHub — SRE AI Copilot", url: "https://github.com/nareshram5855/sre-ai-copilot", icon: "github" },
-  { label: "Architecture Docs", url: "/docs", icon: "docs", internal: true },
-  { label: "Live Demo Hub", url: "/demo", icon: "link", internal: true },
-  { label: "Command Center", url: "/", icon: "link", internal: true },
-  { label: "App Profiler", url: "/profiler", icon: "link", internal: true },
 ];
