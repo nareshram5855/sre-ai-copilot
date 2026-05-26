@@ -48,6 +48,6 @@ aiokafka~=0.12.0
 
 # Persistence (Phase 3 — optional Redis; SQLite checkpoints work without Redis)
 redis~=5.2.1
-langgraph-checkpoint-sqlite~=2.0.26
+langgraph-checkpoint-sqlite~=2.0.0
 
 # Voice module deps → backend/requirements-voice.txt (optional)
