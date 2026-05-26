@@ -133,32 +133,42 @@ class RecruiterStore:
         week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
 
         with self._lock:
-            stats_row = self._conn.execute(
-                "SELECT total_views, unique_views FROM recruiter_stats WHERE id = 1"
-            ).fetchone()
+            try:
+                logger.info("Querying recruiter stats from database at %s", self._db_path)
+                stats_row = self._conn.execute(
+                    "SELECT total_views, unique_views FROM recruiter_stats WHERE id = 1"
+                ).fetchone()
+                logger.info("Stats row: %s", stats_row)
 
-            today_row = self._conn.execute(
-                "SELECT COUNT(*) AS cnt FROM recruiter_view_sessions WHERE first_seen LIKE ?",
-                (f"{today}%",),
-            ).fetchone()
+                today_row = self._conn.execute(
+                    "SELECT COUNT(*) AS cnt FROM recruiter_view_sessions WHERE first_seen LIKE ?",
+                    (f"{today}%",),
+                ).fetchone()
+                logger.info("Today row: %s", today_row)
 
-            feedback_row = self._conn.execute(
-                "SELECT COUNT(*) AS cnt FROM recruiter_feedback"
-            ).fetchone()
+                feedback_row = self._conn.execute(
+                    "SELECT COUNT(*) AS cnt FROM recruiter_feedback"
+                ).fetchone()
+                logger.info("Feedback row: %s", feedback_row)
 
-            recent_rows = self._conn.execute(
-                """SELECT session_id, first_seen, last_seen
-                   FROM recruiter_view_sessions
-                   ORDER BY last_seen DESC LIMIT 20"""
-            ).fetchall()
+                recent_rows = self._conn.execute(
+                    """SELECT session_id, first_seen, last_seen
+                       FROM recruiter_view_sessions
+                       ORDER BY last_seen DESC LIMIT 20"""
+                ).fetchall()
+                logger.info("Recent rows count: %s", len(recent_rows) if recent_rows else 0)
 
-            # Views by day for last 7 days
-            daily_rows = self._conn.execute(
-                """SELECT SUBSTR(first_seen, 1, 10) AS day, COUNT(*) AS cnt
-                   FROM recruiter_view_sessions
-                   WHERE first_seen >= date('now', '-6 days')
-                   GROUP BY day ORDER BY day DESC"""
-            ).fetchall()
+                # Views by day for last 7 days
+                daily_rows = self._conn.execute(
+                    """SELECT SUBSTR(first_seen, 1, 10) AS day, COUNT(*) AS cnt
+                       FROM recruiter_view_sessions
+                       WHERE first_seen >= date('now', '-6 days')
+                       GROUP BY day ORDER BY day DESC"""
+                ).fetchall()
+                logger.info("Daily rows count: %s", len(daily_rows) if daily_rows else 0)
+            except Exception as e:
+                logger.error("Error querying recruiter database: %s", str(e), exc_info=True)
+                raise
 
         return {
             "total_views": int(stats_row["total_views"]) if stats_row else 0,
@@ -167,15 +177,15 @@ class RecruiterStore:
             "feedback_count": int(feedback_row["cnt"]) if feedback_row else 0,
             "recent_sessions": [
                 {
-                    "session_id": row["session_id"][:8] + "…",
+                    "session_id": (row["session_id"][:8] + "…") if row["session_id"] else "unknown",
                     "first_seen": row["first_seen"],
                     "last_seen": row["last_seen"],
                 }
-                for row in recent_rows
+                for row in recent_rows if row
             ],
             "daily_views": [
                 {"day": row["day"], "views": int(row["cnt"])}
-                for row in daily_rows
+                for row in daily_rows if row
             ],
         }
 
