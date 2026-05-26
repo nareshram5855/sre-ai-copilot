@@ -39,7 +39,11 @@ class RecruiterAskPayload(BaseModel):
 
 
 class RecruiterViewPayload(BaseModel):
+    visitor_id: str | None = Field(default=None, max_length=128)
     session_id: str | None = Field(default=None, max_length=128)
+    device_class: str | None = Field(default=None, max_length=32)
+    user_agent_snippet: str | None = Field(default=None, max_length=200)
+    referrer: str | None = Field(default=None, max_length=512)
 
 
 class RecruiterFeedbackPayload(BaseModel):
@@ -486,14 +490,22 @@ def _require_recruiter_store():
 
 @router.post("/view")
 def record_recruiter_view(payload: RecruiterViewPayload | None = None) -> dict:
-    """Increment resume page view counters (total + session-unique when session_id provided)."""
+    """Increment resume page view counters (total + visitor-unique when visitor_id provided)."""
     store = _require_recruiter_store()
     session_id = payload.session_id if payload else None
-    result = store.record_view(session_id)
+    visitor_id = payload.visitor_id if payload else None
+    result = store.record_view(
+        session_id,
+        visitor_id,
+        device_class=payload.device_class if payload else None,
+        user_agent_snippet=payload.user_agent_snippet if payload else None,
+        referrer=payload.referrer if payload else None,
+    )
     return {
         "total_views": result.total_views,
         "unique_views": result.unique_views,
         "is_new_session": result.is_new_session,
+        "is_new_visitor": result.is_new_visitor,
     }
 
 

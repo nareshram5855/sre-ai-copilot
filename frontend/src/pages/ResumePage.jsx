@@ -13,6 +13,7 @@ import { DemoLauncher } from "../components/demo/DemoLauncher.jsx";
 import { RecruiterAskPanel } from "../components/resume/RecruiterAskPanel.jsx";
 import { RecruiterFeedbackPanel } from "../components/resume/RecruiterFeedbackPanel.jsx";
 import { getRecruiterSessionId } from "../utils/recruiterSession.js";
+import { getOrCreateVisitorId, inferDeviceClass } from "../utils/recruiterVisitor.js";
 import {
   RESUME_PROFILE,
   RESUME_SUMMARY,
@@ -153,6 +154,7 @@ export function ResumePage() {
 
   useEffect(() => {
     const sessionId = getRecruiterSessionId();
+    const visitorId = getOrCreateVisitorId();
     const viewedKey = "sreai.recruiterViewRecorded";
 
     async function trackView() {
@@ -161,7 +163,13 @@ export function ResumePage() {
           const res = await fetch("/api/v1/recruiter/view", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: sessionId }),
+            body: JSON.stringify({
+              session_id: sessionId,
+              visitor_id: visitorId,
+              device_class: inferDeviceClass(),
+              user_agent_snippet: (navigator.userAgent || "").slice(0, 120),
+              referrer: document.referrer || undefined,
+            }),
           });
           if (res.ok) {
             window.sessionStorage.setItem(viewedKey, "1");

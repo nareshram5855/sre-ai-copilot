@@ -1,8 +1,11 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Self
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
+
+_DEFAULT_RECRUITER_DB = "backend/data/recruiter.db"
 
 # NodePort URLs — stable, no kubectl port-forward needed.
 # Minikube exposes Prometheus on :30090 and Loki on :30310 directly.
@@ -115,8 +118,13 @@ class Settings(BaseSettings):
     audit_sqlite_path: str = "backend/data/audit.db"
     audit_enabled: bool = True
 
-    # Recruiter resume page views and feedback
-    recruiter_sqlite_path: str = "backend/data/recruiter.db"
+    # Recruiter resume page views and feedback (SQLite)
+    # Railway: mount a volume at /data and set DATA_DIR=/data → /data/recruiter.db
+    data_dir: str = Field(
+        default="",
+        description="Persistent volume directory; recruiter DB defaults to {data_dir}/recruiter.db",
+    )
+    recruiter_sqlite_path: str = _DEFAULT_RECRUITER_DB
 
     # Admin token — protects /api/v1/recruiter/admin/stats
     # Generate: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -149,6 +157,15 @@ class Settings(BaseSettings):
             self.loki_ui_url = _HOST_LOKI if not incluster else self.loki_url
         if not self.loki_base_url or self.loki_base_url == "http://localhost:3100":
             self.loki_base_url = self.loki_url
+        return self
+
+    @model_validator(mode="after")
+    def _resolve_recruiter_sqlite_path(self) -> Self:
+        if self.recruiter_sqlite_path != _DEFAULT_RECRUITER_DB:
+            return self
+        dd = (self.data_dir or "").strip()
+        if dd:
+            self.recruiter_sqlite_path = str(Path(dd) / "recruiter.db")
         return self
 
 

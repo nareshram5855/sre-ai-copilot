@@ -312,6 +312,16 @@ curl -s http://localhost:8080/api/v1/knowledge/status | python -m json.tool
 
 On backend startup, profile ingest runs automatically if the collection is empty (requires Ollama + `nomic-embed-text`).
 
+### Railway: persistent resume analytics
+
+Resume view counts use SQLite. Without a volume, data is lost on redeploy.
+
+1. In Railway → your service → **Volumes** → add mount path `/data` (1 GB is enough).
+2. Set environment variable `DATA_DIR=/data` (database file: `/data/recruiter.db`).
+3. Set `ADMIN_TOKEN` and open `/resume?admin` with that token.
+
+The frontend sets a 90-day `sreai_visitor` cookie for per-device unique counts; `session_id` in sessionStorage still links tab sessions.
+
 ---
 
 ## Roadmap

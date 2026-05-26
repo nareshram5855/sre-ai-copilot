@@ -13,6 +13,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "recruiter.db"
+_UA_SNIPPET_MAX = 120
 
 _CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS recruiter_stats (
@@ -22,10 +23,24 @@ CREATE TABLE IF NOT EXISTS recruiter_stats (
 );
 INSERT OR IGNORE INTO recruiter_stats (id, total_views, unique_views) VALUES (1, 0, 0);
 
+CREATE TABLE IF NOT EXISTS visitors (
+    visitor_id TEXT PRIMARY KEY,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    device_class TEXT,
+    user_agent_snippet TEXT,
+    referrer TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_visitors_last_seen
+    ON visitors(last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_visitors_first_seen
+    ON visitors(first_seen DESC);
+
 CREATE TABLE IF NOT EXISTS recruiter_view_sessions (
     session_id TEXT PRIMARY KEY,
     first_seen TEXT NOT NULL,
-    last_seen TEXT NOT NULL
+    last_seen TEXT NOT NULL,
+    visitor_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_recruiter_sessions_last_seen
     ON recruiter_view_sessions(last_seen DESC);
@@ -50,6 +65,7 @@ class RecruiterViewResult:
     total_views: int
     unique_views: int
     is_new_session: bool
+    is_new_visitor: bool
 
 
 @dataclass
@@ -62,6 +78,21 @@ class RecruiterFeedbackEntry:
     rating: int | None = None
 
 
+def _truncate_id(value: str, n: int = 8) -> str:
+    if len(value) <= n:
+        return value
+    return value[:n] + "…"
+
+
+def _truncate_text(value: str | None, max_len: int) -> str | None:
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    return text[:max_len] if len(text) > max_len else text
+
+
 class RecruiterStore:
     def __init__(self, db_path: str | Path = _DEFAULT_DB) -> None:
         self._db_path = Path(db_path)
@@ -70,19 +101,77 @@ class RecruiterStore:
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_CREATE_SQL)
+        self._migrate_schema()
         self._conn.commit()
         logger.info("RecruiterStore ready at %s", self._db_path)
 
-    def record_view(self, session_id: str | None = None) -> RecruiterViewResult:
+    def _migrate_schema(self) -> None:
+        cols = {
+            row[1]
+            for row in self._conn.execute(
+                "PRAGMA table_info(recruiter_view_sessions)"
+            ).fetchall()
+        }
+        if cols and "visitor_id" not in cols:
+            self._conn.execute(
+                "ALTER TABLE recruiter_view_sessions ADD COLUMN visitor_id TEXT"
+            )
+
+    def record_view(
+        self,
+        session_id: str | None = None,
+        visitor_id: str | None = None,
+        *,
+        device_class: str | None = None,
+        user_agent_snippet: str | None = None,
+        referrer: str | None = None,
+    ) -> RecruiterViewResult:
         now = datetime.now(timezone.utc).isoformat()
         sid = (session_id or "").strip()
+        vid = (visitor_id or "").strip()
+        device = _truncate_text(device_class, 32)
+        ua = _truncate_text(user_agent_snippet, _UA_SNIPPET_MAX)
+        ref = _truncate_text(referrer, 512)
 
         with self._lock:
             self._conn.execute(
                 "UPDATE recruiter_stats SET total_views = total_views + 1 WHERE id = 1"
             )
-            is_new = False
-            if sid:
+            is_new_session = False
+            is_new_visitor = False
+
+            if vid:
+                row = self._conn.execute(
+                    "SELECT visitor_id FROM visitors WHERE visitor_id = ?",
+                    (vid,),
+                ).fetchone()
+                if row is None:
+                    self._conn.execute(
+                        """
+                        INSERT INTO visitors (
+                            visitor_id, first_seen, last_seen,
+                            device_class, user_agent_snippet, referrer
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (vid, now, now, device, ua, ref),
+                    )
+                    self._conn.execute(
+                        "UPDATE recruiter_stats SET unique_views = unique_views + 1 WHERE id = 1"
+                    )
+                    is_new_visitor = True
+                else:
+                    self._conn.execute(
+                        """
+                        UPDATE visitors
+                        SET last_seen = ?,
+                            device_class = COALESCE(?, device_class),
+                            user_agent_snippet = COALESCE(?, user_agent_snippet),
+                            referrer = COALESCE(?, referrer)
+                        WHERE visitor_id = ?
+                        """,
+                        (now, device, ua, ref, vid),
+                    )
+            elif sid:
                 row = self._conn.execute(
                     "SELECT session_id FROM recruiter_view_sessions WHERE session_id = ?",
                     (sid,),
@@ -90,20 +179,45 @@ class RecruiterStore:
                 if row is None:
                     self._conn.execute(
                         """
-                        INSERT INTO recruiter_view_sessions (session_id, first_seen, last_seen)
-                        VALUES (?, ?, ?)
+                        INSERT INTO recruiter_view_sessions (session_id, first_seen, last_seen, visitor_id)
+                        VALUES (?, ?, ?, NULL)
                         """,
                         (sid, now, now),
                     )
                     self._conn.execute(
                         "UPDATE recruiter_stats SET unique_views = unique_views + 1 WHERE id = 1"
                     )
-                    is_new = True
+                    is_new_session = True
                 else:
                     self._conn.execute(
                         "UPDATE recruiter_view_sessions SET last_seen = ? WHERE session_id = ?",
                         (now, sid),
                     )
+
+            if sid and vid:
+                row = self._conn.execute(
+                    "SELECT session_id FROM recruiter_view_sessions WHERE session_id = ?",
+                    (sid,),
+                ).fetchone()
+                if row is None:
+                    self._conn.execute(
+                        """
+                        INSERT INTO recruiter_view_sessions (session_id, first_seen, last_seen, visitor_id)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (sid, now, now, vid),
+                    )
+                    is_new_session = True
+                else:
+                    self._conn.execute(
+                        """
+                        UPDATE recruiter_view_sessions
+                        SET last_seen = ?, visitor_id = COALESCE(?, visitor_id)
+                        WHERE session_id = ?
+                        """,
+                        (now, vid, sid),
+                    )
+
             self._conn.commit()
             stats = self._conn.execute(
                 "SELECT total_views, unique_views FROM recruiter_stats WHERE id = 1"
@@ -112,7 +226,8 @@ class RecruiterStore:
         return RecruiterViewResult(
             total_views=int(stats["total_views"]),
             unique_views=int(stats["unique_views"]),
-            is_new_session=is_new,
+            is_new_session=is_new_session,
+            is_new_visitor=is_new_visitor,
         )
 
     def get_stats(self) -> dict[str, int]:
@@ -128,64 +243,108 @@ class RecruiterStore:
         }
 
     def get_detailed_stats(self) -> dict[str, Any]:
-        """Admin-only: returns rich analytics — views, unique visitors, daily breakdown, recent sessions."""
+        """Admin-only: views, visitor uniques, daily breakdown, recent visitors."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
 
         with self._lock:
             try:
-                logger.info("Querying recruiter stats from database at %s", self._db_path)
                 stats_row = self._conn.execute(
                     "SELECT total_views, unique_views FROM recruiter_stats WHERE id = 1"
                 ).fetchone()
-                logger.info("Stats row: %s", stats_row)
 
                 today_row = self._conn.execute(
-                    "SELECT COUNT(*) AS cnt FROM recruiter_view_sessions WHERE first_seen LIKE ?",
+                    "SELECT COUNT(*) AS cnt FROM visitors WHERE first_seen LIKE ?",
                     (f"{today}%",),
                 ).fetchone()
-                logger.info("Today row: %s", today_row)
+                if not today_row or int(today_row["cnt"]) == 0:
+                    today_row = self._conn.execute(
+                        "SELECT COUNT(*) AS cnt FROM recruiter_view_sessions WHERE first_seen LIKE ?",
+                        (f"{today}%",),
+                    ).fetchone()
 
                 feedback_row = self._conn.execute(
                     "SELECT COUNT(*) AS cnt FROM recruiter_feedback"
                 ).fetchone()
-                logger.info("Feedback row: %s", feedback_row)
 
-                recent_rows = self._conn.execute(
-                    """SELECT session_id, first_seen, last_seen
-                       FROM recruiter_view_sessions
+                visitor_rows = self._conn.execute(
+                    """SELECT visitor_id, device_class, first_seen, last_seen
+                       FROM visitors
                        ORDER BY last_seen DESC LIMIT 20"""
                 ).fetchall()
-                logger.info("Recent rows count: %s", len(recent_rows) if recent_rows else 0)
 
-                # Views by day for last 7 days
+                if not visitor_rows:
+                    session_rows = self._conn.execute(
+                        """SELECT session_id, first_seen, last_seen, visitor_id
+                           FROM recruiter_view_sessions
+                           ORDER BY last_seen DESC LIMIT 20"""
+                    ).fetchall()
+                else:
+                    session_rows = []
+
                 daily_rows = self._conn.execute(
                     """SELECT SUBSTR(first_seen, 1, 10) AS day, COUNT(*) AS cnt
-                       FROM recruiter_view_sessions
+                       FROM visitors
                        WHERE first_seen >= date('now', '-6 days')
                        GROUP BY day ORDER BY day DESC"""
                 ).fetchall()
-                logger.info("Daily rows count: %s", len(daily_rows) if daily_rows else 0)
+                if not daily_rows:
+                    daily_rows = self._conn.execute(
+                        """SELECT SUBSTR(first_seen, 1, 10) AS day, COUNT(*) AS cnt
+                           FROM recruiter_view_sessions
+                           WHERE first_seen >= date('now', '-6 days')
+                           GROUP BY day ORDER BY day DESC"""
+                    ).fetchall()
             except Exception as e:
                 logger.error("Error querying recruiter database: %s", str(e), exc_info=True)
                 raise
+
+        recent_visitors = [
+            {
+                "visitor_id": _truncate_id(row["visitor_id"]),
+                "device_class": row["device_class"] or "",
+                "first_seen": row["first_seen"],
+                "last_seen": row["last_seen"],
+            }
+            for row in visitor_rows
+            if row
+        ]
+
+        if not recent_visitors and session_rows:
+            recent_visitors = [
+                {
+                    "visitor_id": _truncate_id(
+                        (row["visitor_id"] or row["session_id"] or "unknown")
+                    ),
+                    "device_class": "",
+                    "first_seen": row["first_seen"],
+                    "last_seen": row["last_seen"],
+                }
+                for row in session_rows
+                if row
+            ]
+
+        recent_sessions = [
+            {
+                "session_id": entry["visitor_id"],
+                "visitor_id": entry["visitor_id"],
+                "device_class": entry["device_class"],
+                "first_seen": entry["first_seen"],
+                "last_seen": entry["last_seen"],
+            }
+            for entry in recent_visitors
+        ]
 
         return {
             "total_views": int(stats_row["total_views"]) if stats_row else 0,
             "unique_views": int(stats_row["unique_views"]) if stats_row else 0,
             "today_views": int(today_row["cnt"]) if today_row else 0,
             "feedback_count": int(feedback_row["cnt"]) if feedback_row else 0,
-            "recent_sessions": [
-                {
-                    "session_id": (row["session_id"][:8] + "…") if row["session_id"] else "unknown",
-                    "first_seen": row["first_seen"],
-                    "last_seen": row["last_seen"],
-                }
-                for row in recent_rows if row
-            ],
+            "recent_visitors": recent_visitors,
+            "recent_sessions": recent_sessions,
             "daily_views": [
                 {"day": row["day"], "views": int(row["cnt"])}
-                for row in daily_rows if row
+                for row in daily_rows
+                if row
             ],
         }
 

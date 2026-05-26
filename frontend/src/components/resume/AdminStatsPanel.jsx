@@ -146,10 +146,15 @@ export function AdminStatsPanel({ onClose }) {
                     <Clock size={10} /> Recent visitors
                   </p>
                   <div className="space-y-1 max-h-36 overflow-y-auto">
-                    {stats.recent_sessions.map((s, i) => (
-                      <div key={i} className="flex items-center justify-between bg-sre-bg rounded-lg px-3 py-1.5">
-                        <span className="text-gray-500 text-[10px] font-mono">{s.session_id}</span>
-                        <span className="text-gray-600 text-[10px]">{formatTime(s.last_seen)}</span>
+                    {(stats.recent_visitors ?? stats.recent_sessions).map((s, i) => (
+                      <div key={i} className="flex items-center justify-between bg-sre-bg rounded-lg px-3 py-1.5 gap-2">
+                        <span className="text-gray-500 text-[10px] font-mono truncate">
+                          {s.visitor_id || s.session_id}
+                          {s.device_class ? (
+                            <span className="text-gray-600 ml-1.5">· {s.device_class}</span>
+                          ) : null}
+                        </span>
+                        <span className="text-gray-600 text-[10px] shrink-0">{formatTime(s.last_seen)}</span>
                       </div>
                     ))}
                   </div>

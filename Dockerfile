@@ -32,8 +32,9 @@ COPY backend/ ./backend/
 # Built frontend static files
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# SQLite data directory (recruiter views, audit log, checkpoints)
-RUN mkdir -p backend/data && chown -R appuser:appuser backend/data
+# SQLite data: backend/data (audit/checkpoints) + /data volume (recruiter analytics on Railway)
+RUN mkdir -p backend/data /data \
+    && chown -R appuser:appuser backend/data /data
 
 USER appuser
 

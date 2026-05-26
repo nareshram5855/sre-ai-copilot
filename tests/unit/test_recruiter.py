@@ -375,6 +375,27 @@ def test_recruiter_view_increments_total_and_unique():
     assert body3["is_new_session"] is True
 
 
+def test_recruiter_view_visitor_dedup():
+    r1 = client.post(
+        "/api/v1/recruiter/view",
+        json={"visitor_id": "visitor-x", "session_id": "sess-x1", "device_class": "desktop"},
+    )
+    assert r1.status_code == 200
+    body1 = r1.json()
+    assert body1["is_new_visitor"] is True
+    assert body1["unique_views"] == 1
+
+    r2 = client.post(
+        "/api/v1/recruiter/view",
+        json={"visitor_id": "visitor-x", "session_id": "sess-x2"},
+    )
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert body2["is_new_visitor"] is False
+    assert body2["total_views"] == body1["total_views"] + 1
+    assert body2["unique_views"] == body1["unique_views"]
+
+
 def test_recruiter_stats_endpoint():
     client.post("/api/v1/recruiter/view", json={"session_id": "stats-sess"})
     r = client.get("/api/v1/recruiter/stats")
@@ -401,13 +422,19 @@ def test_admin_stats_not_configured(mock_get_settings):
 @patch("backend.routers.recruiter.get_settings")
 def test_admin_stats_success(mock_get_settings):
     mock_get_settings.return_value.admin_token = "secret-admin"
-    client.post("/api/v1/recruiter/view", json={"session_id": "admin-sess"})
+    client.post(
+        "/api/v1/recruiter/view",
+        json={"session_id": "admin-sess", "visitor_id": "admin-visitor", "device_class": "mobile"},
+    )
     r = client.get("/api/v1/recruiter/admin/stats?token=secret-admin")
     assert r.status_code == 200
     data = r.json()
     assert data["total_views"] >= 1
     assert "daily_views" in data
     assert "recent_sessions" in data
+    assert "recent_visitors" in data
+    if data["recent_visitors"]:
+        assert "device_class" in data["recent_visitors"][0]
 
 
 def test_recruiter_feedback_submission():
