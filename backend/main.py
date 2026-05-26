@@ -166,25 +166,31 @@ app.include_router(demo.router)
 # In local dev, Vite's dev server handles the frontend instead.
 import os as _os
 from fastapi.responses import FileResponse
-_dist = _os.path.join(_os.path.dirname(__file__), "..", "frontend", "dist")
+_dist = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "frontend", "dist"))
 if _os.path.isdir(_dist):
     from fastapi.staticfiles import StaticFiles
-    
-    # Catch-all route for SPA: serves index.html for any unmatched frontend routes
+
+    # Serve fingerprinted assets (JS/CSS/fonts) directly; fall back to index.html
+    # for all other paths so React Router can handle client-side navigation.
+    # NOTE: this catch-all MUST come after all API routers are registered.
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        """Serve index.html for any unmatched route (SPA fallback)."""
         if full_path.startswith("api/"):
-            # If it starts with api/, let it 404 (already matched by routers)
             raise HTTPException(status_code=404, detail="Not Found")
-        
-        index_path = _os.path.join(_dist, "index.html")
-        if _os.path.exists(index_path):
-            return FileResponse(index_path)
-        raise HTTPException(status_code=404, detail="Not Found")
-    
-    # Mount static assets
-    app.mount("/", StaticFiles(directory=_dist, html=False), name="static")
+        # Serve the real file if it exists (assets, favicon, etc.)
+        candidate = _os.path.normpath(_os.path.join(_dist, full_path))
+        if candidate.startswith(_dist) and _os.path.isfile(candidate):
+            return FileResponse(candidate)
+        # SPA fallback
+        return FileResponse(_os.path.join(_dist, "index.html"))
+
+    # Mount /assets specifically so fingerprinted JS/CSS are also served via
+    # the StaticFiles handler (handles ETags, range requests, etc.) in addition
+    # to the catch-all above.
+    _assets_dir = _os.path.join(_dist, "assets")
+    if _os.path.isdir(_assets_dir):
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="static-assets")
+
     logger.info("Serving React SPA from frontend/dist")
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────
