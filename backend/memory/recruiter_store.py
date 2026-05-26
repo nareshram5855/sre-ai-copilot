@@ -127,6 +127,58 @@ class RecruiterStore:
             "unique_views": int(row["unique_views"]),
         }
 
+    def get_detailed_stats(self) -> dict[str, Any]:
+        """Admin-only: returns rich analytics — views, unique visitors, daily breakdown, recent sessions."""
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        week_ago = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        with self._lock:
+            stats_row = self._conn.execute(
+                "SELECT total_views, unique_views FROM recruiter_stats WHERE id = 1"
+            ).fetchone()
+
+            today_row = self._conn.execute(
+                "SELECT COUNT(*) AS cnt FROM recruiter_view_sessions WHERE first_seen LIKE ?",
+                (f"{today}%",),
+            ).fetchone()
+
+            feedback_row = self._conn.execute(
+                "SELECT COUNT(*) AS cnt FROM recruiter_feedback"
+            ).fetchone()
+
+            recent_rows = self._conn.execute(
+                """SELECT session_id, first_seen, last_seen
+                   FROM recruiter_view_sessions
+                   ORDER BY last_seen DESC LIMIT 20"""
+            ).fetchall()
+
+            # Views by day for last 7 days
+            daily_rows = self._conn.execute(
+                """SELECT SUBSTR(first_seen, 1, 10) AS day, COUNT(*) AS cnt
+                   FROM recruiter_view_sessions
+                   WHERE first_seen >= date('now', '-6 days')
+                   GROUP BY day ORDER BY day DESC"""
+            ).fetchall()
+
+        return {
+            "total_views": int(stats_row["total_views"]) if stats_row else 0,
+            "unique_views": int(stats_row["unique_views"]) if stats_row else 0,
+            "today_views": int(today_row["cnt"]) if today_row else 0,
+            "feedback_count": int(feedback_row["cnt"]) if feedback_row else 0,
+            "recent_sessions": [
+                {
+                    "session_id": row["session_id"][:8] + "…",
+                    "first_seen": row["first_seen"],
+                    "last_seen": row["last_seen"],
+                }
+                for row in recent_rows
+            ],
+            "daily_views": [
+                {"day": row["day"], "views": int(row["cnt"])}
+                for row in daily_rows
+            ],
+        }
+
     def submit_feedback(self, entry: RecruiterFeedbackEntry) -> int:
         now = datetime.now(timezone.utc).isoformat()
         reasons_json = json.dumps(entry.reasons or [])

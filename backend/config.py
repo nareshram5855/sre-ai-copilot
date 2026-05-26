@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     # Recruiter resume page views and feedback
     recruiter_sqlite_path: str = "backend/data/recruiter.db"
 
+    # Admin token — protects /api/v1/recruiter/admin/stats
+    # Generate: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+    admin_token: str = ""
+
     # In-memory session store limits (dev fallback)
     session_max_count: int = 500
     session_max_history: int = 20

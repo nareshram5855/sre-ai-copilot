@@ -8,7 +8,7 @@ import re
 from typing import AsyncIterator
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -502,6 +502,15 @@ def recruiter_stats() -> dict:
     """Public view counts for the resume portfolio page."""
     store = _require_recruiter_store()
     return store.get_stats()
+
+
+@router.get("/admin/stats")
+def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKEN env var")) -> dict:
+    """Admin-only: detailed analytics — total/unique/daily views, recent sessions, feedback count."""
+    if not settings.admin_token or token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Invalid admin token")
+    store = _require_recruiter_store()
+    return store.get_detailed_stats()
 
 
 @router.post("/feedback")

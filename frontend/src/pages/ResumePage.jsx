@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { PageShell } from "../components/layout/PageShell.jsx";
 import { ResumeHero } from "../components/resume/ResumeHero.jsx";
+import { AdminStatsPanel } from "../components/resume/AdminStatsPanel.jsx";
 import { LinkedInRecommendationsSection } from "../components/resume/LinkedInRecommendationCard.jsx";
 import { DemoLauncher } from "../components/demo/DemoLauncher.jsx";
 import { RecruiterAskPanel } from "../components/resume/RecruiterAskPanel.jsx";
@@ -146,6 +147,9 @@ export function ResumePage() {
   const [viewStats, setViewStats] = useState(null);
   const [recruiterEngaged, setRecruiterEngaged] = useState(false);
   const [recruiterChatLoading, setRecruiterChatLoading] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(
+    () => new URLSearchParams(window.location.search).has("admin")
+  );
 
   useEffect(() => {
     const sessionId = getRecruiterSessionId();
@@ -411,6 +415,8 @@ export function ResumePage() {
       />
 
       <RecruiterFeedbackPanel engaged={recruiterEngaged} />
+
+      {showAdmin && <AdminStatsPanel onClose={() => setShowAdmin(false)} />}
     </PageShell>
   );
 }
