@@ -3,8 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from backend.config import Settings
-from backend.memory.recruiter_store import RecruiterStore, init_recruiter_store
+from backend.config import Settings, get_settings
+from backend.memory.recruiter_store import (
+    RecruiterStore,
+    init_recruiter_store,
+    maybe_migrate_legacy_recruiter_db,
+)
 
 
 @pytest.fixture
@@ -66,4 +70,75 @@ def test_record_view_unknown_country_stored_empty(store):
     store.record_view(visitor_id="visitor-unknown")
     stats = store.get_detailed_stats()
     assert stats["recent_visitors"][0]["country_code"] == ""
+
+
+def test_migrate_legacy_db_when_target_missing(tmp_path, monkeypatch):
+    legacy_dir = tmp_path / "legacy" / "data"
+    legacy_dir.mkdir(parents=True)
+    legacy_db = legacy_dir / "recruiter.db"
+    target_db = tmp_path / "data" / "recruiter.db"
+
+    legacy_store = RecruiterStore(legacy_db)
+    legacy_store.record_view(visitor_id="v1")
+    legacy_store.close()
+
+    monkeypatch.setattr(
+        "backend.memory.recruiter_store._DEFAULT_DB",
+        legacy_db,
+    )
+
+    assert maybe_migrate_legacy_recruiter_db(target_db) is True
+    migrated = RecruiterStore(target_db)
+    assert migrated.get_stats()["total_views"] == 1
+    migrated.close()
+
+
+def test_migrate_skips_when_target_has_data(tmp_path, monkeypatch):
+    legacy_dir = tmp_path / "legacy" / "data"
+    legacy_dir.mkdir(parents=True)
+    legacy_db = legacy_dir / "recruiter.db"
+    target_db = tmp_path / "data" / "recruiter.db"
+
+    legacy_store = RecruiterStore(legacy_db)
+    legacy_store.record_view(visitor_id="legacy")
+    legacy_store.close()
+
+    target_store = RecruiterStore(target_db)
+    target_store.record_view(visitor_id="target-a")
+    target_store.record_view(visitor_id="target-b")
+    target_store.close()
+
+    monkeypatch.setattr(
+        "backend.memory.recruiter_store._DEFAULT_DB",
+        legacy_db,
+    )
+
+    assert maybe_migrate_legacy_recruiter_db(target_db) is False
+    reopened = RecruiterStore(target_db)
+    assert reopened.get_stats()["total_views"] == 2
+    reopened.close()
+
+
+def test_init_migrates_legacy_to_data_dir(tmp_path, monkeypatch):
+    legacy_dir = tmp_path / "backend" / "data"
+    legacy_dir.mkdir(parents=True)
+    legacy_db = legacy_dir / "recruiter.db"
+    data_dir = tmp_path / "data"
+    target_db = data_dir / "recruiter.db"
+
+    legacy_store = RecruiterStore(legacy_db)
+    legacy_store.record_view(visitor_id="dev-visitor")
+    legacy_store.close()
+
+    monkeypatch.setattr(
+        "backend.memory.recruiter_store._DEFAULT_DB",
+        legacy_db,
+    )
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+    get_settings.cache_clear()
+
+    store = init_recruiter_store(target_db)
+    assert store.get_stats()["total_views"] == 1
+    store.close()
+    get_settings.cache_clear()
 

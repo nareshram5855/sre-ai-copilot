@@ -314,7 +314,23 @@ On backend startup, profile ingest runs automatically if the collection is empty
 
 ### Railway: persistent resume analytics
 
-Resume view counts use SQLite. Without a volume, data is lost on redeploy.
+Resume view counts use SQLite (`recruiter.db`).
+
+**Before commit `86afeb5`**, analytics lived at `backend/data/recruiter.db` inside the container filesystem. That path is **ephemeral** — every Railway redeploy starts a fresh container and wipes it.
+
+**After `86afeb5`**, set `DATA_DIR=/data` and mount a Railway volume at `/data` so the database file is `/data/recruiter.db` and survives redeploys.
+
+| Scenario | DB path | Survives redeploy? |
+|---|---|---|
+| Local dev (no `DATA_DIR`) | `backend/data/recruiter.db` | Yes (on your machine) |
+| Railway, no volume | `backend/data/recruiter.db` in container | **No** |
+| Railway + volume + `DATA_DIR=/data` | `/data/recruiter.db` on volume | **Yes** |
+
+**First-time volume mount:** Railway creates an empty volume. If you previously had views stored in the old ephemeral path, that data is **not** copied automatically — it lived only on the previous container and is gone unless you have a Railway snapshot or manual backup. New views after the volume is mounted persist correctly.
+
+On startup, if the target DB is empty but a legacy `backend/data/recruiter.db` with data still exists on disk (common in local dev when switching to `DATA_DIR=/data`), the app copies it once to the target path. This does **not** recover production data after a redeploy when the old container is gone.
+
+**Setup:**
 
 1. In Railway → your service → **Volumes** → add mount path `/data` (1 GB is enough).
 2. Set environment variable `DATA_DIR=/data` (database file: `/data/recruiter.db`).

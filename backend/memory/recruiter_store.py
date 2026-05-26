@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import sqlite3
 import threading
 from dataclasses import dataclass
@@ -92,6 +93,57 @@ def _truncate_text(value: str | None, max_len: int) -> str | None:
     if not text:
         return None
     return text[:max_len] if len(text) > max_len else text
+
+
+def _sqlite_has_recruiter_data(db_path: Path) -> bool:
+    """True if the SQLite file contains non-empty recruiter analytics."""
+    if not db_path.is_file() or db_path.stat().st_size == 0:
+        return False
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return False
+    try:
+        try:
+            row = conn.execute(
+                "SELECT total_views FROM recruiter_stats WHERE id = 1"
+            ).fetchone()
+            if row and int(row[0]) > 0:
+                return True
+        except sqlite3.OperationalError:
+            return False
+        for table in ("visitors", "recruiter_view_sessions", "recruiter_feedback"):
+            try:
+                cnt = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                if cnt and int(cnt[0]) > 0:
+                    return True
+            except sqlite3.OperationalError:
+                continue
+        return False
+    finally:
+        conn.close()
+
+
+def maybe_migrate_legacy_recruiter_db(target_path: str | Path) -> bool:
+    """Copy legacy backend/data/recruiter.db to target when target is empty.
+
+    Helps local dev (DATA_DIR=/data) and one-time Railway cutover if the old
+    ephemeral file still exists on disk. Never overwrites a target that already
+    has analytics data.
+    """
+    target = Path(target_path).resolve()
+    legacy = _DEFAULT_DB.resolve()
+    if target == legacy:
+        return False
+    if not legacy.is_file() or not _sqlite_has_recruiter_data(legacy):
+        return False
+    if target.is_file() and _sqlite_has_recruiter_data(target):
+        return False
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(legacy, target)
+    logger.info("Migrated recruiter analytics from %s to %s", legacy, target)
+    return True
 
 
 class RecruiterStore:
@@ -432,7 +484,14 @@ _recruiter_store: RecruiterStore | None = None
 
 def init_recruiter_store(db_path: str | Path | None = None) -> RecruiterStore:
     global _recruiter_store
-    _recruiter_store = RecruiterStore(db_path or _DEFAULT_DB)
+    path = Path(db_path or _DEFAULT_DB)
+    from backend.config import get_settings
+
+    cfg = get_settings()
+    data_dir = (cfg.data_dir or "").strip()
+    if data_dir and path.resolve() == (Path(data_dir) / "recruiter.db").resolve():
+        maybe_migrate_legacy_recruiter_db(path)
+    _recruiter_store = RecruiterStore(path)
     return _recruiter_store
 
 
