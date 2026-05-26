@@ -222,6 +222,16 @@ _BEHAVIORAL_QUERY_HINTS = (
     "vault injector",
     "openshift migration",
     "zero downtime",
+    "rag pipeline",
+    "retrieval augmented",
+    "amazon bedrock",
+    "bedrock",
+    "llama 3",
+    "titan embeddings",
+    "aws glue",
+    "natural language query",
+    "semantic search",
+    "vector embeddings",
 )
 
 _PORTFOLIO_QUERY_HINTS = (

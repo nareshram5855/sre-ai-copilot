@@ -91,7 +91,7 @@ export const RESUME_SKILLS = {
   ai: [
     "Claude AI · Citi AI Workspaces · Generative AI for IaC & code review",
     "LangGraph multi-agent orchestration (portfolio project)",
-    "RAG · ChromaDB · local LLM (Ollama) · kubectl-ai patterns",
+    "RAG pipelines — Amazon Bedrock (Llama 3 70B) · Titan Embeddings · AWS Glue · ChromaDB · Ollama",
     "Human-in-the-loop remediation · audit trails · Docker Model Runner",
     "SSE & Kafka real-time incident feeds · FastAPI · entitlement APIs",
   ],
@@ -455,6 +455,7 @@ export const RESUME_EXPERIENCE = [
       "Crafted user-data scripts within Terraform modules to configure Informatica services automatically upon instance initialization, optimizing setup time and reducing manual configuration errors.",
       "Automated ECS service provisioning and deployment pipelines using Terraform and CI/CD tools.",
       "Automated data ingestion from various sources into Databricks using AWS Lambda, S3, and EventBridge, enabling real-time processing and transformation.",
+      "Architected a production RAG (Retrieval-Augmented Generation) pipeline for the data analytics team — AWS Glue jobs for ETL and structured metadata extraction from Aurora/RDS schemas, Amazon Titan Text Embeddings v2 for semantic vectorization, and Amazon Bedrock (Llama 3 70B) for LLM-powered inference — enabling analysts to query operational runbooks and data catalog in plain English without writing SQL.",
       "Led lift-and-shift migrations of legacy applications and vendor applications from on-premises data centers to AWS EC2 and EKS, ensuring minimal downtime and optimizing cloud resources for performance, scalability, and cost-efficiency.",
       "Developed extensive Terraform blueprints for provisioning AWS services such as EC2, EKS, API Gateway, Lambda, IAM, Security Groups, CloudWatch, ASG, SES, SQS, SNS, AMI, VPC Endpoints, ATF, S3, EBS, EFS, KMS, Secrets Manager, and RDS/Aurora databases.",
       "Developed Terraform modules to automate the creation, retention, and deletion of EC2 snapshots, ensuring data durability and rapid recovery options for critical EC2 instances.",
@@ -467,7 +468,7 @@ export const RESUME_EXPERIENCE = [
       "Collaborated closely with business users and stakeholders to understand their specific requirements and objectives, ensuring solutions developed were aligned with business needs.",
       "Supported critical production deployments, ensuring smooth rollouts of new features and updates with minimal downtime and disruption to business operations.",
     ],
-    environment: "AWS, Terraform, Terragrunt, CFN, IaC, GitHub Actions, Aurora, RDS, Oracle, Jenkins, Splunk, CLI, GitHub, Auto Scaling, Maven, Docker, EKS, ECS, Fargate, Unix/Linux, EC2, VPC, Security Groups, IAM, Amazon S3, SNS, SQS, KMS, NACL, Secrets Manager, ACM, API Gateway, Lambda, CloudFront, CloudWatch, X-Ray, WAF, AWS PrivateLink, VPC endpoints, DynamoDB, RDS, Elastic Load Balancing",
+    environment: "AWS, Terraform, Terragrunt, CFN, IaC, GitHub Actions, Aurora, RDS, Oracle, Jenkins, Splunk, CLI, GitHub, Auto Scaling, Maven, Docker, EKS, ECS, Fargate, Unix/Linux, EC2, VPC, Security Groups, IAM, Amazon S3, SNS, SQS, KMS, NACL, Secrets Manager, ACM, API Gateway, Lambda, CloudFront, CloudWatch, X-Ray, WAF, AWS PrivateLink, VPC endpoints, DynamoDB, Elastic Load Balancing, Amazon Bedrock, AWS Glue, Llama 3 70B, Amazon Titan Embeddings, RAG",
   },
   {
     company: "Verizon",
@@ -652,9 +653,9 @@ export const RESUME_ACHIEVEMENTS = [
     icon: "chart",
   },
   {
-    title: "Terraform blueprints at Toyota TMNA",
+    title: "RAG pipeline & data platform at Toyota TMNA",
     detail:
-      "Built reusable Terraform blueprints for data hosting services — Informatica cluster deployments, ETL pipelines on ECS/Fargate, Aurora/RDS provisioning, EFS/EBS lifecycle automation, and Datadog observability across the data platform.",
+      "Architected a production RAG pipeline for the data analytics team — AWS Glue ETL for Aurora/RDS metadata ingestion, Amazon Titan Embeddings for semantic search, and Amazon Bedrock (Llama 3 70B) for LLM inference. Built reusable Terraform blueprints for Informatica cluster deployments, ECS/Fargate ETL pipelines, Aurora/RDS provisioning, EFS/EBS lifecycle automation, and Datadog observability.",
     icon: "spark",
   },
 ];
