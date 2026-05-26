@@ -508,12 +508,13 @@ def recruiter_stats() -> dict:
 def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKEN env var")) -> dict:
     """Admin-only: detailed analytics — total/unique/daily views, recent sessions, feedback count."""
     cfg = get_settings()
-    if not cfg.admin_token:
+    expected = (cfg.admin_token or "").strip()
+    if not expected:
         raise HTTPException(
             status_code=503,
             detail="Admin analytics not configured (set ADMIN_TOKEN on the server)",
         )
-    if token != cfg.admin_token:
+    if (token or "").strip() != expected:
         raise HTTPException(status_code=401, detail="Invalid admin token")
     try:
         store = _require_recruiter_store()
@@ -521,6 +522,8 @@ def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKE
         stats = store.get_detailed_stats()
         logger.info("Successfully fetched recruiter stats")
         return stats
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to fetch recruiter stats: %s", str(e), exc_info=True)
         # Return empty stats gracefully instead of 500 error

@@ -20,7 +20,10 @@ export function AdminStatsPanel({ onClose }) {
     try {
       const res = await fetch(`/api/v1/recruiter/admin/stats?token=${encodeURIComponent(t)}`);
       if (res.status === 401) {
-        setError("Invalid token");
+        sessionStorage.removeItem(SESSION_KEY);
+        setError(
+          "Invalid token. Use the ADMIN_TOKEN environment variable from Railway (not the app role password)."
+        );
         return;
       }
       if (res.status === 503) {
