@@ -5,7 +5,7 @@ set -e
 if [ -d /data ]; then
     chown -R appuser:appuser /data 2>/dev/null || true
 fi
-exec su-exec appuser gunicorn backend.main:app \
+exec gosu appuser gunicorn backend.main:app \
     --worker-class uvicorn.workers.UvicornWorker \
     --workers 2 \
     --bind "0.0.0.0:${PORT:-8080}" \

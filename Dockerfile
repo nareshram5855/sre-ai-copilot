@@ -17,7 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     APP_ENV=production
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl su-exec \
+    && apt-get install -y --no-install-recommends curl gosu \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser
 
