@@ -940,7 +940,7 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className={`font-semibold text-stone-100 ${hasConversation ? "text-sm" : "text-base"}`}>
-              Chat with Naresh
+              Ask Naresh's AI
             </h2>
             <span
               className={`inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border transition-colors ${
@@ -1139,7 +1139,7 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
           type="button"
           onClick={openChat}
           className="recruiter-chat-fab fixed bottom-5 right-5 z-50 inline-flex items-center gap-2.5 pl-1.5 pr-4 py-1.5 rounded-full text-sm font-semibold text-white bg-gradient-to-r from-teal-700/95 to-indigo-700/95 shadow-lg shadow-black/45 border border-teal-400/30 resume-no-print hover:from-teal-600 hover:to-indigo-600 transition-all hover:scale-[1.02] active:scale-[0.98]"
-          aria-label="Chat with Naresh"
+          aria-label="Ask Naresh's AI"
         >
           <span className="relative shrink-0">
             <NareshAnimatedAvatar
@@ -1154,7 +1154,7 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
             </span>
           </span>
           <span className="hidden sm:inline pr-0.5">
-            {loading ? "Naresh is replying…" : messages.length > 0 ? "Back to chat" : "Chat with Naresh"}
+            {loading ? "Naresh's AI is replying…" : messages.length > 0 ? "Back to chat" : "Ask Naresh's AI"}
           </span>
         </button>
       )}
@@ -1164,7 +1164,7 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
           className="recruiter-chat-overlay fixed inset-0 z-[60] flex items-stretch sm:items-center justify-center p-0 sm:p-4 resume-no-print"
           role="dialog"
           aria-modal="true"
-          aria-label="Chat with Naresh"
+          aria-label="Ask Naresh's AI"
         >
           <button
             type="button"

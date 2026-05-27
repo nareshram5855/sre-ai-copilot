@@ -20,7 +20,7 @@ export const RESUME_CTA = {
   introCallLabel: "Schedule 30-min intro call",
   introCallSubject: "30-minute intro call",
   calendlyUrl: "",
-  chatLabel: "Chat with Naresh",
+  chatLabel: "Ask Naresh's AI",
   chatHint: "Verified answers · first person · live on this profile",
 };
 

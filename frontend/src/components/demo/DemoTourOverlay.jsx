@@ -152,7 +152,7 @@ export function DemoTourOverlay() {
                 {isLast ? (
                   <>
                     <MessageCircle size={14} />
-                    Finish & chat with Naresh
+                    Finish & ask Naresh's AI
                   </>
                 ) : (
                   <>
