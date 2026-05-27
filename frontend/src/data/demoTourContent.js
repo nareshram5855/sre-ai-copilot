@@ -108,7 +108,7 @@ export const DEMO_LANDING = {
   subtitle:
     "Personal R&D platform exploring AI-assisted incident response — LangGraph agents, unified observability, " +
     "RAG runbooks, and human-gated remediation. Built independently of my Fortune-scale client work at Citi, BofA, Verizon, and Toyota.",
-  tourCta: "Start 5-minute hiring manager tour",
+  tourCta: "Start 5-min SRE AI demo",
   tourSub: "Guided architecture walkthrough · stays on this page · no setup",
   fullDemoCta: "Open full interactive demo",
   fullDemoSub: "Requires read-only or admin access",

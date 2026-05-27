@@ -83,9 +83,9 @@ export function RecruiterChatWelcome({ onAsk, onJdTemplate, loading = false }) {
             <Play size={15} className="text-teal-300 fill-teal-300/30" />
           </span>
           <span className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-white">5-min hiring manager tour</p>
+            <p className="text-[13px] font-semibold text-white">5-min SRE AI demo</p>
             <p className="text-[10px] text-stone-500 mt-0.5">
-              Architecture walkthrough · incidents · enterprise safety
+              Self-learning · RAG runbooks · autonomous triage
             </p>
           </span>
           <Sparkles size={13} className="shrink-0 text-teal-400/60" />
