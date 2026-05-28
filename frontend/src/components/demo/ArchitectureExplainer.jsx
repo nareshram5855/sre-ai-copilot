@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  Play, Github, ExternalLink, ChevronRight, ArrowDown, Clock,
-  Layout, Server, Brain, Database, Activity, Cloud,
+  Play, Github, ExternalLink, ChevronRight, ArrowDown, Clock, Activity,
+  Layout, Server, Brain, Database, Cloud,
   Ticket, Filter, Shield, FileText, BarChart3,
 } from "lucide-react";
 import { DEMO_LANDING, DEMO_TOUR_STEPS } from "../../data/demoTourContent.js";
@@ -363,7 +363,7 @@ function SixtySecondSummary() {
   );
 }
 
-export function ArchitectureExplainer({ onStartTour }) {
+export function ArchitectureExplainer({ onStartTour, onObserveDemo }) {
   const [searchParams] = useSearchParams();
   const tourStep = getTourStepFromSearchParams(searchParams);
   const tourActive = isDemoTourActive() && tourStep > 0;
@@ -501,10 +501,20 @@ export function ArchitectureExplainer({ onStartTour }) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {onObserveDemo && (
+              <button
+                type="button"
+                onClick={onObserveDemo}
+                className="demo-cta-primary inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-semibold text-white"
+              >
+                <Activity size={13} />
+                Live observability demo
+              </button>
+            )}
             <button
               type="button"
               onClick={onStartTour}
-              className="demo-cta-primary inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-semibold text-white"
+              className="demo-launcher-card demo-launcher-card--primary inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-semibold text-white"
             >
               <Play size={13} className="fill-current" />
               {DEMO_LANDING.tourCta}

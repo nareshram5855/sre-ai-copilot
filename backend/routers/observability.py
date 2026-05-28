@@ -508,6 +508,15 @@ def stack_health():
 
     remediation = _remediation_if_down(prom_ok, loki_ok)
 
+    if not prom_ok and not loki_ok:
+        return {
+            "tools": _MOCK_STACK_TOOLS,
+            "namespace": NAMESPACE,
+            "remediation": remediation,
+            "mock": True,
+            "fetched_at": datetime.now(tz=timezone.utc).isoformat(),
+        }
+
     return {
         "tools": [
             {
@@ -602,6 +611,16 @@ def get_timeseries(
             if pts:
                 series[name] = pts
 
+    if not series and not _prometheus_reachable():
+        series = _mock_timeseries(service)
+        return {
+            "service": service,
+            "minutes": minutes,
+            "step": step,
+            "series": series,
+            "mock": True,
+        }
+
     return {"service": service, "minutes": minutes, "step": step, "series": series}
 
 
@@ -611,6 +630,135 @@ def _service_health(anomalies: list[dict]) -> str:
     if anomalies:
         return "warning"
     return "healthy"
+
+
+# ── Cached demo telemetry (auth-service) when Prometheus/Loki unreachable ─────
+
+_DEMO_OBSERVE_SERVICES = ("auth-service", "payment-api")
+
+_MOCK_AUTH_METRICS = {
+    "error_rate": 0.042,
+    "request_rate": 128.4,
+    "latency_p99_ms": 842.0,
+    "latency_p50_ms": 94.0,
+    "db_errors": 0.0,
+    "pool_exhaustion": 0.0,
+}
+
+_MOCK_PAYMENT_METRICS = {
+    "error_rate": 0.008,
+    "request_rate": 64.2,
+    "latency_p99_ms": 312.0,
+    "latency_p50_ms": 48.0,
+    "db_errors": 0.0,
+    "pool_exhaustion": 0.0,
+}
+
+_MOCK_AUTH_ANOMALIES = [
+    {"type": "HIGH_LATENCY", "severity": "warning", "label": "842ms P99"},
+]
+
+_MOCK_STACK_TOOLS = [
+    {
+        "name": "Prometheus",
+        "role": "Metrics scraper & TSDB",
+        "endpoint": _prom_ui(),
+        "status": "down",
+        "stats": {"targets_up": 0, "total_targets": 0, "series": 0},
+        "ui_path": "/graph",
+    },
+    {
+        "name": "Loki",
+        "role": "Log aggregation",
+        "endpoint": _loki_ui(),
+        "status": "down",
+        "stats": {"active_streams": 0, "labels": 0},
+        "ui_path": "/loki/api/v1/labels",
+    },
+    {
+        "name": "OTel Collector",
+        "role": "Traces & metrics pipeline",
+        "endpoint": "otel-collector.observability:4317",
+        "status": "unknown",
+        "stats": {},
+        "ui_path": None,
+    },
+    {
+        "name": "Promtail",
+        "role": "Log shipping (DaemonSet)",
+        "endpoint": "promtail.observability:9080",
+        "status": "unknown",
+        "stats": {"services_shipping": 0},
+        "ui_path": None,
+    },
+]
+
+
+def _mock_sparkline(base: float, spread: float, points: int = 12) -> list[list[float]]:
+    now = time.time()
+    step = 60.0
+    out: list[list[float]] = []
+    for i in range(points):
+        ts = now - (points - 1 - i) * step
+        jitter = spread * (0.5 - (i % 5) * 0.1)
+        out.append([ts, round(max(0.0, base + jitter), 4)])
+    return out
+
+
+def _mock_watch_summary(minutes: int) -> dict:
+    auth_anomalies = list(_MOCK_AUTH_ANOMALIES)
+    auth_svc = {
+        "name": "auth-service",
+        "status": "up",
+        "instances": 2,
+        "namespace": NAMESPACE,
+        "health": _service_health(auth_anomalies),
+        "metrics": dict(_MOCK_AUTH_METRICS),
+        "anomalies": auth_anomalies,
+        "anomaly_count": len(auth_anomalies),
+    }
+    pay_svc = {
+        "name": "payment-api",
+        "status": "up",
+        "instances": 2,
+        "namespace": NAMESPACE,
+        "health": "healthy",
+        "metrics": dict(_MOCK_PAYMENT_METRICS),
+        "anomalies": [],
+        "anomaly_count": 0,
+    }
+    services_out = [auth_svc, pay_svc]
+    all_anomalies = [{**a, "service": "auth-service", "metric": a.get("type", "")} for a in auth_anomalies]
+
+    return {
+        "overall_health": "warning",
+        "services": services_out,
+        "anomalies": all_anomalies,
+        "minutes": minutes,
+        "service_count": len(services_out),
+        "healthy_count": 1,
+        "fleet_health_pct": 50.0,
+        "prometheus_reachable": False,
+        "anomaly_count": len(all_anomalies),
+        "mock": True,
+        "fetched_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+
+def _mock_timeseries(service: str) -> dict[str, list]:
+    if service == "payment-api":
+        metrics = _MOCK_PAYMENT_METRICS
+    else:
+        metrics = _MOCK_AUTH_METRICS
+    series: dict[str, list] = {}
+    for name, val in metrics.items():
+        if name.endswith("_ms"):
+            series[name] = _mock_sparkline(val, val * 0.08)
+        elif name.endswith("_rate") or name == "jvm_cpu":
+            series[name] = _mock_sparkline(val, val * 0.12)
+        elif isinstance(val, (int, float)) and val > 0:
+            series[name] = _mock_sparkline(val, max(val * 0.05, 0.01))
+    return series
 
 
 # ── SLO / error-budget endpoint (used by Command Center widget) ──────────────
@@ -724,6 +872,9 @@ def watch_summary(minutes: int = Query(10, ge=1, le=60)):
     Powers the Anomaly Watch dashboard.
     """
     prom_ok = _prometheus_reachable()
+    if not prom_ok:
+        return _mock_watch_summary(minutes)
+
     svc_list = list_services().get("services", [])
     all_anomalies: list[dict] = []
 

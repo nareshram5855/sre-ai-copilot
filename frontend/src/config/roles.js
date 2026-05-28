@@ -1,5 +1,7 @@
 // Role-based access control
 
+import { canAccessInObserveDemo } from "../utils/demoObserve.js";
+
 export const ROLES = {
   recruiter: "recruiter",
   read:      "read",
@@ -27,6 +29,7 @@ export const ROLE_CAN_ACT = {
 };
 
 export function canViewPage(role, view) {
+  if (canAccessInObserveDemo(view)) return true;
   const allowed = ROLE_VIEWS[role];
   if (allowed === "*") return true;
   return allowed?.includes(view) ?? false;

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   LayoutDashboard, Activity, Zap, BookOpen, Stethoscope,
   Shield, X, Circle, BookMarked, ShieldCheck, User, Gauge, Lock, LogOut, Play,
+  ChevronDown, ChevronRight,
 } from "lucide-react";
 import axios from "axios";
 import { useSystemHealth } from "../hooks/useSystemHealth.js";
@@ -24,7 +25,12 @@ const NAV_ITEMS = [
 
 const SECTIONS = ["OVERVIEW", "OPERATIONS", "INTELLIGENCE", "CAREER"];
 
-export function NavDrawer({ activeView, onViewChange, open, onClose }) {
+const OBSERVE_DEMO_NAV_IDS = new Set(["dashboard", "observe", "resume"]);
+const OBSERVE_DEMO_DEFERRED_IDS = new Set([
+  "incidents", "runbooks", "audit", "profiler", "analyze", "docs", "demo",
+]);
+
+export function NavDrawer({ activeView, onViewChange, open, onClose, observeDemoActive = false }) {
   const { health } = useSystemHealth();
   const { role, logout } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
@@ -35,6 +41,7 @@ export function NavDrawer({ activeView, onViewChange, open, onClose }) {
   const [fleetHealth, setFleetHealth]     = useState(null);
   const [streamLive, setStreamLive]       = useState(false);
   const [prevCount, setPrevCount]         = useState(0);
+  const [deferredOpen, setDeferredOpen]   = useState(false);
   const debounceRef = useRef(null);
 
   const fetchWatch = useCallback(async () => {
@@ -115,6 +122,14 @@ export function NavDrawer({ activeView, onViewChange, open, onClose }) {
     fleetHealth === "warning"  ? { ring: "border-yellow-500/25",  bg: "bg-yellow-500/10",  dot: "bg-yellow-400 animate-pulse", text: "text-yellow-300" } :
                                  { ring: "border-gray-700/40",    bg: "bg-gray-800/20",    dot: "bg-gray-600",           text: "text-gray-400"   };
 
+  const visibleNavItems = observeDemoActive
+    ? NAV_ITEMS.filter((i) => OBSERVE_DEMO_NAV_IDS.has(i.id))
+    : NAV_ITEMS;
+  const deferredNavItems = observeDemoActive
+    ? NAV_ITEMS.filter((i) => OBSERVE_DEMO_DEFERRED_IDS.has(i.id))
+    : [];
+  const drawerTopClass = observeDemoActive ? "top-[5.25rem]" : "top-12";
+
   return (
     <>
       {/* ── Backdrop ─────────────────────────────────────── */}
@@ -130,7 +145,7 @@ export function NavDrawer({ activeView, onViewChange, open, onClose }) {
       {/* ── Drawer ───────────────────────────────────────── */}
       <div
         style={{ boxShadow: "32px 0 80px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.05)" }}
-        className={`fixed left-0 top-12 bottom-0 z-50 w-72 flex flex-col
+        className={`fixed left-0 ${drawerTopClass} bottom-0 z-50 w-72 flex flex-col
           bg-[#0b0d16] border-r border-white/[0.06]
           transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
           ${open ? "translate-x-0" : "-translate-x-full"}`}
@@ -178,7 +193,83 @@ export function NavDrawer({ activeView, onViewChange, open, onClose }) {
 
         {/* ── Nav sections ─────────────────────────────── */}
         <nav className="flex-1 px-3 py-3 overflow-y-auto">
-          {SECTIONS.map((section, si) => {
+          {observeDemoActive ? (
+            <>
+              <p className="px-3 mb-2 text-[10px] font-bold text-indigo-400/80 uppercase tracking-[0.15em]">
+                Demo focus
+              </p>
+              <div className="space-y-0.5">
+                {visibleNavItems.map(({ id, label, icon: Icon }) => {
+                  const active = activeView === id;
+                  const badge = getBadge(id);
+                  const allowed = canViewPage(role, id);
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => handleNav(id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all group relative ${
+                        active && allowed
+                          ? "bg-indigo-500/[0.15]"
+                          : "hover:bg-white/[0.04]"
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${
+                        active && allowed
+                          ? "bg-indigo-600 shadow-lg shadow-indigo-900/60"
+                          : "bg-white/[0.06] group-hover:bg-white/[0.09]"
+                      }`}>
+                        <Icon size={15} className={active && allowed ? "text-white" : "text-gray-500 group-hover:text-gray-300"} />
+                      </div>
+                      <span className={`flex-1 text-sm font-medium transition-colors ${
+                        active && allowed ? "text-white" : "text-gray-400 group-hover:text-gray-200"
+                      }`}>
+                        {label}
+                      </span>
+                      {badge && allowed && (
+                        <span className={`${badge.cls} text-[10px] rounded-full px-2 py-0.5 font-bold min-w-[20px] text-center tabular-nums`}>
+                          {badge.n}
+                        </span>
+                      )}
+                      {active && allowed && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {deferredNavItems.length > 0 && (
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    onClick={() => setDeferredOpen((v) => !v)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-gray-600 uppercase tracking-[0.12em] hover:text-gray-400 transition-colors"
+                  >
+                    {deferredOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    Full platform (later)
+                  </button>
+                  {deferredOpen && (
+                    <div className="space-y-0.5 mt-1 opacity-60">
+                      {deferredNavItems.map(({ id, label, icon: Icon }) => (
+                        <button
+                          key={id}
+                          onClick={() => handleNav(id)}
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-white/[0.03] transition-all"
+                        >
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-white/[0.04]">
+                            <Icon size={13} className="text-gray-600" />
+                          </div>
+                          <span className="flex-1 text-xs text-gray-500">{label}</span>
+                          <Lock size={10} className="text-gray-700 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+          SECTIONS.map((section, si) => {
             const items = NAV_ITEMS.filter((i) => i.section === section);
             return (
               <div key={section} className={si > 0 ? "mt-5" : ""}>
@@ -240,7 +331,8 @@ export function NavDrawer({ activeView, onViewChange, open, onClose }) {
                 </div>
               </div>
             );
-          })}
+          })
+          )}
         </nav>
 
         {/* ── Footer ───────────────────────────────────── */}

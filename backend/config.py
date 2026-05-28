@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────────────────────────
     app_env: str = "development"
     log_level: str = "INFO"
+    # Optional Railway demo preset: observability | full | (empty)
+    demo_mode: str = ""
     backend_cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # ── Observability (Prometheus + Loki) ─────────────────────────────────────

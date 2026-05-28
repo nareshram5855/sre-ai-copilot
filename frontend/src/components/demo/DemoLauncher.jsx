@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Play, Radio, Loader2, ChevronUp, Layers } from "lucide-react";
+import { Play, Radio, Loader2, ChevronUp, Layers, Activity } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { DEMO_METRICS, FEATURED_PROJECT } from "../../data/resumeContent.js";
 import {
@@ -8,6 +8,7 @@ import {
   shouldAutoExpandDemo,
   startDemoTour,
 } from "../../utils/demoTour.js";
+import { startObserveDemo } from "../../utils/demoObserve.js";
 import { ArchitectureExplainer, HeroTechStack } from "./ArchitectureExplainer.jsx";
 
 function oneLineSummary(text, maxLen = 140) {
@@ -75,6 +76,10 @@ export function DemoLauncher() {
   function handleStartTour() {
     setDemoExpanded(true);
     startDemoTour(navigate, setRole);
+  }
+
+  function handleObserveDemo() {
+    startObserveDemo(navigate, setRole);
   }
 
   return (
@@ -152,6 +157,14 @@ export function DemoLauncher() {
                   <Play size={14} className="text-teal-300 fill-teal-300/30" />
                   5-min HM tour
                 </button>
+                <button
+                  type="button"
+                  onClick={handleObserveDemo}
+                  className="demo-cta-secondary inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-indigo-500/30 text-xs sm:text-sm font-semibold text-indigo-200 transition-all"
+                >
+                  <Activity size={14} className="text-indigo-300" />
+                  Live observability demo
+                </button>
               </div>
             </div>
           ) : (
@@ -168,7 +181,7 @@ export function DemoLauncher() {
                 </button>
               </div>
 
-              <ArchitectureExplainer onStartTour={handleStartTour} />
+              <ArchitectureExplainer onStartTour={handleStartTour} onObserveDemo={handleObserveDemo} />
 
               {/* Quick tour CTA — visible above fold on mobile after hero metrics */}
               <div className="mt-6 pt-4 border-t border-sre-border/30 resume-no-print sm:hidden">

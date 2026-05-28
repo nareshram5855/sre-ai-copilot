@@ -1,12 +1,19 @@
 import { useState, useEffect } from "react";
-import { Menu, X, ChevronRight } from "lucide-react";
+import { Menu, X, ChevronRight, Radio, Loader2 } from "lucide-react";
 import { VIEW_LABELS } from "../../config/nav.js";
 import { useSystemHealth } from "../../hooks/useSystemHealth.js";
 import { StatusPill } from "./StatusPill.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { ROLE_META } from "../../config/roles.js";
 
-export function AppTopBar({ activeView, onBurger, navOpen, environment = "production" }) {
+export function AppTopBar({
+  activeView,
+  onBurger,
+  navOpen,
+  environment = "production",
+  observeDemoActive = false,
+  observeDemoService = "auth-service",
+}) {
   const { health, loading, online, observabilityDegraded } = useSystemHealth();
   const { role } = useAuth();
   const roleMeta = ROLE_META[role];
@@ -14,19 +21,59 @@ export function AppTopBar({ activeView, onBurger, navOpen, environment = "produc
   const backendStatus = loading ? "loading" : online ? (observabilityDegraded ? "degraded" : "up") : "down";
 
   const [utcTime, setUtcTime] = useState(() => new Date().toISOString().slice(11, 19));
+  const [demoLive, setDemoLive] = useState(null);
+
   useEffect(() => {
     const id = setInterval(() => setUtcTime(new Date().toISOString().slice(11, 19)), 1000);
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!observeDemoActive) return;
+    let cancelled = false;
+    fetch("/api/v1/demo/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setDemoLive(d?.live ?? false);
+      })
+      .catch(() => {
+        if (!cancelled) setDemoLive(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [observeDemoActive]);
+
   return (
     <header
-      className="flex-shrink-0 h-12 px-4 flex items-center gap-3 z-30 relative"
+      className="flex-shrink-0 z-30 relative flex flex-col"
       style={{
         background: "rgba(11,13,22,0.92)",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
         backdropFilter: "blur(16px)",
       }}
+    >
+      {observeDemoActive && (
+        <div className="observe-demo-banner">
+          <div className="observe-demo-banner-inner">
+            <span className="observe-demo-banner-text">
+              Observability demo · {observeDemoService} · metrics · logs · traces
+            </span>
+            {demoLive === null ? (
+              <Loader2 size={11} className="animate-spin text-indigo-300/70" />
+            ) : (
+              <span
+                className={`observe-demo-live-badge ${demoLive ? "observe-demo-live-badge--live" : "observe-demo-live-badge--mock"}`}
+              >
+                <Radio size={9} className={demoLive ? "animate-pulse" : ""} />
+                {demoLive ? "Live stack" : "Mock telemetry"}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    <div
+      className="h-12 px-4 flex items-center gap-3"
     >
       {/* Burger */}
       <button
@@ -80,6 +127,7 @@ export function AppTopBar({ activeView, onBurger, navOpen, environment = "produc
           </span>
         )}
       </div>
+    </div>
     </header>
   );
 }

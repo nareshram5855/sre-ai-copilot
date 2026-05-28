@@ -1796,6 +1796,68 @@ body.demo-tour-active main {
   }
 }
 
+/* ── Observability demo (manager presentation) ── */
+.observe-demo-banner {
+  border-bottom: 1px solid rgba(99, 102, 241, 0.22);
+  background: linear-gradient(90deg, rgba(49, 46, 129, 0.35), rgba(15, 23, 42, 0.5));
+}
+
+.observe-demo-banner-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 1rem;
+  min-height: 1.75rem;
+}
+
+.observe-demo-banner-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(199, 210, 254, 0.95);
+  letter-spacing: 0.01em;
+}
+
+.observe-demo-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.observe-demo-live-badge--live {
+  color: rgb(110, 231, 183);
+  background: rgba(6, 78, 59, 0.35);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.observe-demo-live-badge--mock {
+  color: rgb(253, 230, 138);
+  background: rgba(120, 53, 15, 0.25);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.observe-demo-intro {
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 0.875rem;
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.35), rgba(15, 23, 42, 0.45));
+  padding: 1rem 1.125rem;
+}
+
+.observe-demo-intro-bullet {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.625rem;
+  background: rgba(11, 13, 22, 0.35);
+  padding: 0.625rem 0.75rem;
+}
+
 @media print {
   @page {
     size: letter portrait;

@@ -18,12 +18,20 @@ import { PATH_TO_VIEW, VIEW_TO_PATH } from "./config/nav.js";
 import { useAuth } from "./context/AuthContext.jsx";
 import { canViewPage } from "./config/roles.js";
 import { startDemoTour } from "./utils/demoTour.js";
+import {
+  isObserveDemoActive,
+  parseObserveDemoFromSearchParams,
+  startObserveDemo,
+  getObserveDemoService,
+} from "./utils/demoObserve.js";
 
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { role, setRole } = useAuth();
+
+  const observeDemoActive = isObserveDemoActive(searchParams);
 
   const initialView = useMemo(() => {
     const v = PATH_TO_VIEW[location.pathname] || "dashboard";
@@ -58,6 +66,53 @@ export default function App() {
     window.addEventListener("sre-demo-tour-start", onTourStart);
     return () => window.removeEventListener("sre-demo-tour-start", onTourStart);
   }, [navigate, setRole]);
+
+  // Observability demo entry: /?demo=observe or /observe?demo=1&service=...
+  useEffect(() => {
+    const demoParam = searchParams.get("demo");
+    if (demoParam === "observe" && location.pathname === "/") {
+      startObserveDemo(navigate, setRole, getObserveDemoService(searchParams));
+      return;
+    }
+    if (parseObserveDemoFromSearchParams(searchParams)) {
+      try {
+        sessionStorage.setItem("sreai.observeDemoActive", "1");
+      } catch (_) {}
+      if (role === "recruiter") {
+        setRole("read");
+      }
+      if (location.pathname === "/") {
+        navigate(`/observe?demo=1&service=${encodeURIComponent(getObserveDemoService(searchParams))}`, { replace: true });
+      }
+    }
+  }, [searchParams, location.pathname, navigate, setRole, role]);
+
+  useEffect(() => {
+    const onObserveStart = (ev) => {
+      startObserveDemo(navigate, setRole, ev.detail?.service);
+    };
+    window.addEventListener("sre-observe-demo-start", onObserveStart);
+    return () => window.removeEventListener("sre-observe-demo-start", onObserveStart);
+  }, [navigate, setRole]);
+
+  // Railway: DEMO_MODE=observability auto-enters observe demo when no other route set
+  useEffect(() => {
+    if (location.pathname !== "/" && location.pathname !== "/resume") return;
+    if (parseObserveDemoFromSearchParams(searchParams)) return;
+    let cancelled = false;
+    fetch("/api/v1/demo/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d?.observe_demo) return;
+        if (location.pathname === "/" || (location.pathname === "/resume" && !searchParams.has("tour"))) {
+          startObserveDemo(navigate, setRole);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, navigate, searchParams, setRole]);
 
   const openAnalysis = useCallback((serviceName) => {
     setAnalyzeService(serviceName);
@@ -102,6 +157,8 @@ export default function App() {
         activeView={activeView}
         onBurger={() => setNavOpen((v) => !v)}
         navOpen={navOpen}
+        observeDemoActive={observeDemoActive}
+        observeDemoService={getObserveDemoService(searchParams)}
       />
 
       <NavDrawer
@@ -109,6 +166,7 @@ export default function App() {
         onViewChange={handleViewChange}
         open={navOpen}
         onClose={() => setNavOpen(false)}
+        observeDemoActive={observeDemoActive}
       />
 
       <main className="flex-1 overflow-auto">
@@ -120,7 +178,11 @@ export default function App() {
           />
         )}
         {activeView === "observe" && (
-          <AnomalyWatchPanel onAnalyzeService={openAnalysis} />
+          <AnomalyWatchPanel
+            onAnalyzeService={openAnalysis}
+            observeDemoActive={observeDemoActive}
+            demoService={getObserveDemoService(searchParams)}
+          />
         )}
         {activeView === "incidents" && <IncidentsPage initialIncidentKey={selectedIncidentKey} onOpenAudit={openAuditFor} />}
         {activeView === "analyze" && (
@@ -137,7 +199,7 @@ export default function App() {
         {activeView === "demo" && <DemoPage />}
       </main>
 
-      {activeView !== "resume" && activeView !== "demo" && <ChatWidget />}
+      {activeView !== "resume" && activeView !== "demo" && !observeDemoActive && <ChatWidget />}
       <DemoTourOverlay />
     </div>
   );

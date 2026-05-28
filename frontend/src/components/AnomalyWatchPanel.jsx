@@ -5,6 +5,8 @@ import {
 } from "lucide-react";
 import axios from "axios";
 import { ChartPanel, StackCard } from "./observability/widgets.jsx";
+import { OBSERVE_DEMO_INTRO } from "../data/demoObserveContent.js";
+import { filterObserveDemoServices } from "../utils/demoObserve.js";
 
 const POLL_MS = 30_000;
 const LOOKBACKS = [5, 10, 15, 30];
@@ -78,7 +80,11 @@ function AnomalyRow({ item }) {
   );
 }
 
-export function AnomalyWatchPanel({ onAnalyzeService }) {
+export function AnomalyWatchPanel({
+  onAnalyzeService,
+  observeDemoActive = false,
+  demoService = "auth-service",
+}) {
   const [lookback, setLookback] = useState(10);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [phase, setPhase] = useState("idle");
@@ -89,11 +95,20 @@ export function AnomalyWatchPanel({ onAnalyzeService }) {
   const [lastRefresh, setLastRefresh] = useState(null);
   const [error, setError] = useState(null);
   const [streamLive, setStreamLive] = useState(false);
+  const [introDismissed, setIntroDismissed] = useState(false);
   const pollRef = useRef(null);
   const esRef = useRef(null);
   const refreshDebounceRef = useRef(null);
 
-  const selectedSvc = watch?.services?.find((s) => s.name === selected) || watch?.services?.[0];
+  const displayServices = observeDemoActive
+    ? filterObserveDemoServices(watch?.services || [])
+    : watch?.services || [];
+  const selectedSvc =
+    displayServices.find((s) => s.name === selected) ||
+    displayServices[0] ||
+    watch?.services?.find((s) => s.name === selected) ||
+    watch?.services?.[0];
+  const isMockTelemetry = Boolean(watch?.mock || watch?.prometheus_reachable === false);
 
   const fetchWatch = useCallback(async () => {
     setPhase((p) => (p === "idle" ? "loading" : "refreshing"));
@@ -103,6 +118,7 @@ export function AnomalyWatchPanel({ onAnalyzeService }) {
       setWatch(data);
       setLastRefresh(new Date().toISOString().slice(11, 19));
       setSelected((prev) => {
+        if (observeDemoActive && demoService) return demoService;
         if (prev && data.services?.some((s) => s.name === prev)) return prev;
         return data.services?.[0]?.name || null;
       });
@@ -111,7 +127,13 @@ export function AnomalyWatchPanel({ onAnalyzeService }) {
       setError(err.message || "Failed to load");
       setPhase("error");
     }
-  }, [lookback]);
+  }, [lookback, observeDemoActive, demoService]);
+
+  useEffect(() => {
+    if (observeDemoActive && demoService) {
+      setSelected(demoService);
+    }
+  }, [observeDemoActive, demoService]);
 
   const fetchTimeseries = useCallback(async (svc) => {
     if (!svc) return;
@@ -205,6 +227,16 @@ export function AnomalyWatchPanel({ onAnalyzeService }) {
           }`}>
             {streamLive ? "Connected" : "Polling"}
           </span>
+          {observeDemoActive && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full border border-indigo-500/30 bg-indigo-950/30 text-indigo-300 font-medium">
+              Demo: {demoService}
+            </span>
+          )}
+          {isMockTelemetry && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-950/25 text-amber-200 font-medium">
+              Mock telemetry
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -250,7 +282,7 @@ export function AnomalyWatchPanel({ onAnalyzeService }) {
         </div>
       </div>
 
-      {error && (
+      {error && !watch?.mock && (
         <div className="mx-5 mt-3 rounded-lg border border-red-800/50 bg-red-950/20 px-4 py-2 text-xs text-red-300">
           {error} — ensure Prometheus is running on :19090
           {!streamLive && autoRefresh && (
@@ -261,13 +293,39 @@ export function AnomalyWatchPanel({ onAnalyzeService }) {
         </div>
       )}
 
+      {observeDemoActive && !introDismissed && (
+        <div className="observe-demo-intro mx-5 mt-3 shrink-0">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-white">{OBSERVE_DEMO_INTRO.headline}</h2>
+              <p className="text-[10px] text-indigo-300/80 mt-0.5">60-second read · manager demo</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIntroDismissed(true)}
+              className="text-[10px] text-gray-500 hover:text-gray-300 shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
+          <ul className="grid gap-2 sm:grid-cols-3">
+            {OBSERVE_DEMO_INTRO.bullets.map((b) => (
+              <li key={b.label} className="observe-demo-intro-bullet">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-teal-400/90">{b.label}</p>
+                <p className="text-xs text-gray-400 leading-relaxed mt-1">{b.text}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── Summary strip ───────────────────────────────────────────── */}
       {watch && (
         <div className="flex gap-4 px-5 py-3 border-b border-sre-border/50 shrink-0">
           {[
-            { label: "Services",  value: watch.service_count,  cls: "text-blue-400" },
+            { label: "Services",  value: observeDemoActive ? displayServices.length : watch.service_count,  cls: "text-blue-400" },
             { label: "Anomalies", value: watch.anomaly_count,  cls: watch.anomaly_count ? "text-red-400" : "text-emerald-400" },
-            { label: "Critical",  value: watch.services?.filter((s) => s.health === "critical").length, cls: "text-orange-400" },
+            { label: "Critical",  value: displayServices.filter((s) => s.health === "critical").length, cls: "text-orange-400" },
             { label: "Window",    value: `${watch.minutes}m`,  cls: "text-gray-400" },
           ].map(({ label, value, cls }) => (
             <div key={label} className="flex items-center gap-2">
@@ -283,12 +341,14 @@ export function AnomalyWatchPanel({ onAnalyzeService }) {
         {/* Left: service list + stack */}
         <aside className="w-52 flex-shrink-0 border-r border-sre-border flex flex-col overflow-y-auto bg-sre-surface/30">
           <div className="px-3 pt-4 pb-2">
-            <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2">Services</p>
+            <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2">
+              Services{observeDemoActive ? " (demo)" : ""}
+            </p>
             {phase === "loading" && !watch ? (
               <p className="text-xs text-gray-600 animate-pulse py-4 text-center">Loading…</p>
             ) : (
               <div className="space-y-1">
-                {(watch?.services || []).map((svc) => (
+                {displayServices.map((svc) => (
                   <ServiceListItem
                     key={svc.name}
                     svc={svc}
@@ -321,7 +381,7 @@ export function AnomalyWatchPanel({ onAnalyzeService }) {
                   <h2 className="text-sm font-semibold text-gray-300">{selectedSvc.name}</h2>
                   <span className="text-[10px] text-gray-600">· SLI metrics · last {lookback}m</span>
                 </div>
-                {onAnalyzeService && (
+                {onAnalyzeService && !observeDemoActive && (
                   <button
                     onClick={() => onAnalyzeService(selectedSvc.name)}
                     className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
