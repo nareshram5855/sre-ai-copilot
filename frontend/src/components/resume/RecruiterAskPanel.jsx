@@ -215,15 +215,17 @@ function SectionBadge({ type }) {
   return null;
 }
 
-/** Strip trailing partial markdown so streaming text reads cleanly (no jumbled `**`). */
+/** Strip markdown syntax during streaming so recruiters see clean prose, not raw markers. */
 function softenStreamingMarkdown(text) {
   if (!text) return "";
-  let out = text;
-  // Drop incomplete bold opener at end: "...word **partial"
-  out = out.replace(/\*\*[^*\n]{0,80}$/, (m) => m.replace(/\*\*/g, ""));
-  // Drop lone asterisk at end
-  out = out.replace(/\*(?=[^\*]*$)/, "");
-  return out;
+  return text
+    .replace(/\*\*\*(.+?)\*\*\*/g, "$1")          // bold+italic → plain
+    .replace(/\*\*(.+?)\*\*/g, "$1")               // bold → plain
+    .replace(/\*(.+?)\*/g, "$1")                   // italic → plain
+    .replace(/^#{1,6}\s+/gm, "")                   // headings → plain
+    .replace(/^(\s*)[*\-]\s+/gm, "$1• ")           // bullet markers → •
+    .replace(/\*\*[^*\n]{0,80}$/, (m) => m.replace(/\*\*/g, ""))  // trailing incomplete bold
+    .replace(/\*(?!\s)(?=[^*]*$)/, "");             // lone trailing asterisk
 }
 
 function StreamingText({ content }) {
