@@ -14,6 +14,7 @@ import { RecruiterAskPanel } from "../components/resume/RecruiterAskPanel.jsx";
 import { RecruiterFeedbackPanel } from "../components/resume/RecruiterFeedbackPanel.jsx";
 import { getRecruiterSessionId } from "../utils/recruiterSession.js";
 import { getOrCreateVisitorId, inferDeviceClass } from "../utils/recruiterVisitor.js";
+import { logEvent } from "../utils/recruiterAnalytics.js";
 import {
   RESUME_PROFILE,
   RESUME_SUMMARY,
@@ -190,6 +191,7 @@ export function ResumePage() {
   }, []);
 
   function handlePrint() {
+    logEvent("pdf_clicked");
     window.print();
   }
 

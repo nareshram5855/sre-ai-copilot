@@ -17,6 +17,7 @@ import {
 import NareshAnimatedAvatar from "./NareshAnimatedAvatar.jsx";
 import NareshThinkingSpeech from "./NareshThinkingSpeech.jsx";
 import { RecruiterChatWelcome } from "./RecruiterChatWelcome.jsx";
+import { logEvent, logQuestion } from "../../utils/recruiterAnalytics.js";
 
 const DELAY_THOUGHT_PATTERN =
   /\b(?:sorry|taking a min|almost there|still pulling|still cross|still mapping|still separating|still keeping|still pulling real)\b/i;
@@ -614,7 +615,7 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
   const isClosed = viewMode === VIEW_MODES.CLOSED;
   const hasConversation = messages.length > 0;
 
-  const openChat = useCallback(() => setViewMode(VIEW_MODES.MAXIMIZED), []);
+  const openChat = useCallback(() => { logEvent("chat_opened"); setViewMode(VIEW_MODES.MAXIMIZED); }, []);
   const closeChat = useCallback(() => setViewMode(VIEW_MODES.CLOSED), []);
 
   useEffect(() => {
@@ -711,6 +712,8 @@ export function RecruiterAskPanel({ onEngaged, onLoadingChange }) {
     const assistantId = `assistant-${Date.now()}`;
     const openingFirstQuestion = messages.length === 0;
 
+    logEvent("question_asked");
+    logQuestion(trimmed);
     setQuestion("");
     onEngaged?.();
     if (openingFirstQuestion) {

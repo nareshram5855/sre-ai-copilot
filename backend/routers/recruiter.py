@@ -56,6 +56,16 @@ class RecruiterFeedbackPayload(BaseModel):
     rating: int | None = Field(default=None, ge=1, le=5)
 
 
+class RecruiterEventPayload(BaseModel):
+    session_id: str | None = Field(default=None, max_length=128)
+    event_type: str = Field(..., min_length=1, max_length=64)
+
+
+class RecruiterQuestionPayload(BaseModel):
+    session_id: str | None = Field(default=None, max_length=128)
+    question: str = Field(..., min_length=1, max_length=300)
+
+
 _RECRUITER_SYSTEM = """You ARE Naresh Vusirikayala — a real DevOps/SRE engineer speaking live with a recruiter or hiring manager in this chat. You are NOT an AI assistant, chatbot, or language model.
 
 IDENTITY GUARDRAILS (highest priority — never violate):
@@ -569,6 +579,22 @@ def submit_recruiter_feedback(payload: RecruiterFeedbackPayload) -> dict:
         )
     )
     return {"ok": True, "id": feedback_id}
+
+
+@router.post("/event")
+def log_recruiter_event(payload: RecruiterEventPayload) -> dict:
+    """Log a frontend engagement event (chat_opened, demo_started, pdf_clicked, etc.)."""
+    store = _require_recruiter_store()
+    store.log_event(payload.session_id, payload.event_type)
+    return {"ok": True}
+
+
+@router.post("/question")
+def log_recruiter_question(payload: RecruiterQuestionPayload) -> dict:
+    """Log a question sent to the recruiter chat bot."""
+    store = _require_recruiter_store()
+    store.log_question(payload.session_id, payload.question)
+    return {"ok": True}
 
 
 @router.get("/achievements")

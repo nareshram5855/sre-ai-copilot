@@ -59,6 +59,24 @@ CREATE TABLE IF NOT EXISTS recruiter_feedback (
 );
 CREATE INDEX IF NOT EXISTS idx_recruiter_feedback_submitted
     ON recruiter_feedback(submitted_at DESC);
+
+CREATE TABLE IF NOT EXISTS recruiter_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    event_type TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recruiter_events_created
+    ON recruiter_events(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS recruiter_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    question TEXT NOT NULL,
+    asked_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recruiter_questions_asked
+    ON recruiter_questions(asked_at DESC);
 """
 
 
@@ -362,6 +380,19 @@ class RecruiterStore:
                            WHERE first_seen >= date('now', '-6 days')
                            GROUP BY day ORDER BY day DESC"""
                     ).fetchall()
+
+                event_rows = self._conn.execute(
+                    """SELECT event_type, COUNT(*) AS cnt
+                       FROM recruiter_events
+                       GROUP BY event_type"""
+                ).fetchall()
+
+                question_rows = self._conn.execute(
+                    """SELECT session_id, question, asked_at
+                       FROM recruiter_questions
+                       ORDER BY asked_at DESC LIMIT 25"""
+                ).fetchall()
+
             except Exception as e:
                 logger.error("Error querying recruiter database: %s", str(e), exc_info=True)
                 raise
@@ -405,6 +436,8 @@ class RecruiterStore:
             for entry in recent_visitors
         ]
 
+        event_counts = {row["event_type"]: int(row["cnt"]) for row in (event_rows or [])}
+
         return {
             "total_views": int(stats_row["total_views"]) if stats_row else 0,
             "unique_views": int(stats_row["unique_views"]) if stats_row else 0,
@@ -417,7 +450,42 @@ class RecruiterStore:
                 for row in daily_rows
                 if row
             ],
+            "engagement_funnel": {
+                "chat_opened": event_counts.get("chat_opened", 0),
+                "question_asked": event_counts.get("question_asked", 0),
+                "demo_started": event_counts.get("demo_started", 0),
+                "pdf_clicked": event_counts.get("pdf_clicked", 0),
+            },
+            "recent_questions": [
+                {
+                    "session_id": _truncate_id(row["session_id"] or ""),
+                    "question": row["question"],
+                    "asked_at": row["asked_at"],
+                }
+                for row in (question_rows or [])
+            ],
         }
+
+    def log_event(self, session_id: str | None, event_type: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO recruiter_events (session_id, event_type, created_at) VALUES (?, ?, ?)",
+                (session_id or None, event_type.strip()[:64], now),
+            )
+            self._conn.commit()
+
+    def log_question(self, session_id: str | None, question: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        q = (question or "").strip()[:300]
+        if not q:
+            return
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO recruiter_questions (session_id, question, asked_at) VALUES (?, ?, ?)",
+                (session_id or None, q, now),
+            )
+            self._conn.commit()
 
     def submit_feedback(self, entry: RecruiterFeedbackEntry) -> int:
         now = datetime.now(timezone.utc).isoformat()

@@ -10,6 +10,7 @@ import {
 } from "../../utils/demoTour.js";
 import { startObserveDemo } from "../../utils/demoObserve.js";
 import { ArchitectureExplainer, HeroTechStack } from "./ArchitectureExplainer.jsx";
+import { logEvent } from "../../utils/recruiterAnalytics.js";
 
 function oneLineSummary(text, maxLen = 140) {
   const trimmed = text.replace(/\s+/g, " ").trim();
@@ -74,6 +75,7 @@ export function DemoLauncher() {
   }, [scrollToFeatured]);
 
   function handleStartTour() {
+    logEvent("demo_started");
     setDemoExpanded(true);
     startDemoTour(navigate, setRole);
   }
