@@ -119,7 +119,7 @@ export function RecruiterFeedbackPanel({ engaged = false }) {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-40 md:left-auto md:right-6 md:max-w-lg resume-no-print">
+    <div className="fixed bottom-4 left-4 right-4 z-40 md:left-auto md:right-6 md:max-w-lg resume-no-print max-h-[90vh] overflow-y-auto rounded-2xl">
       <div className="panel-card p-5 border-indigo-500/25 bg-gradient-to-br from-indigo-950/50 via-sre-surface to-sre-surface shadow-xl shadow-black/40">
         <div className="flex items-start gap-3 mb-4">
           <div className="p-2 rounded-lg bg-indigo-600/15 border border-indigo-500/30 shrink-0">
