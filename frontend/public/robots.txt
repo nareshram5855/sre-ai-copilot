@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Allow: /resume
+
+Sitemap: https://nareshvusiri.dev/sitemap.xml

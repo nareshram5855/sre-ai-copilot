@@ -19,7 +19,7 @@ export const RESUME_PROFILE = {
 export const RESUME_CTA = {
   introCallLabel: "Schedule 30-min intro call",
   introCallSubject: "30-minute intro call",
-  calendlyUrl: "",
+  calendlyUrl: "https://linkedin.com/in/nareshvusiri",
   chatLabel: "Ask Naresh's AI",
   chatHint: "Verified answers · first person · live on this profile",
 };
