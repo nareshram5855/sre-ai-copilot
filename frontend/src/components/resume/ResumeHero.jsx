@@ -1,6 +1,5 @@
 import {
   Mail,
-  Phone,
   MapPin,
   Printer,
   MessageCircle,
@@ -102,12 +101,6 @@ export function ResumeHero({ viewStats, onPrint }) {
             <Mail size={13} className="text-teal-500/80 shrink-0" />
             <a href={`mailto:${RESUME_PROFILE.email}`} className="text-xs hover:text-teal-300 transition-colors break-all">
               {RESUME_PROFILE.email}
-            </a>
-          </li>
-          <li className="flex items-center gap-1.5">
-            <Phone size={13} className="text-teal-500/80 shrink-0" />
-            <a href={`tel:${RESUME_PROFILE.phone}`} className="text-xs hover:text-teal-300 transition-colors">
-              {RESUME_PROFILE.phone}
             </a>
           </li>
         </ul>
