@@ -8,7 +8,7 @@ export const RESUME_PROFILE = {
   title: "Senior Cloud DevOps Engineer · SRE · AI Platform Engineer",
   location: "Frisco, TX",
   email: "nareshvusiri5855@gmail.com",
-  phone: "+1 (737) 224-1812",
+  phone: "+1 (469) 464-9580",
   availability: "Available for SRE · Platform · DevOps roles",
   tagline:
     "8 years building reliable cloud platforms on AWS & Azure — Kubernetes, GitOps, observability, " +
