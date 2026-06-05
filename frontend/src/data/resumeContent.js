@@ -410,6 +410,76 @@ export const FEATURED_PROJECT = {
   ],
 };
 
+export const STACKPORT_PROJECT = {
+  name: "Stackport",
+  badge: "Internal Developer Platform · Open source",
+  role: "Independent portfolio build — not employer production work",
+  period: "2026 – Present",
+  demoUrl: "https://nareshvusiri.dev/stackport",
+  repoUrl: "https://github.com/nareshram5855/infra-platform",
+  repoLabel: "github.com/nareshram5855/infra-platform",
+  summary:
+    "Self-service AWS infrastructure platform I built to eliminate the dev → ticket → platform-team friction loop. " +
+    "Describe requirements in plain English, Gemini AI designs the stack, Stackport generates production-ready " +
+    "Terragrunt configs with correct dependency ordering (VPC → EKS → RDS → KMS), pushes to GitHub, " +
+    "and wires OIDC trust so GitHub Actions deploys to AWS with zero stored credentials.",
+  highlights: [
+    {
+      label: "AI Architecture Wizard",
+      detail:
+        "Gemini Flash takes plain English requirements and produces a full module plan — VPC, EKS, RDS, Redis, " +
+        "ECR — with cost estimates ($180–450/mo), SOX/PCI compliance badges, and node group sizing per environment.",
+    },
+    {
+      label: "Enterprise Terragrunt",
+      detail:
+        "43 Terraform modules. Dependency graph auto-resolved: vpc_id = dependency.vpc.outputs.vpc_id, " +
+        "kms_key_id = dependency.kms.outputs.key_arn. Mock outputs for plan-before-apply. " +
+        "3-AZ prod vs 1-AZ dev, multi-AZ RDS, IMMUTABLE ECR tags in prod — all automatic.",
+    },
+    {
+      label: "Zero stored credentials",
+      detail:
+        "GitHub Actions OIDC federation: short-lived STS tokens, trust policy scoped to the exact repo. " +
+        "Portal creates the OIDC provider, IAM role, GitHub secret, and dev/staging/prod environments " +
+        "automatically during provisioning.",
+    },
+    {
+      label: "AWS Organizations foundation",
+      detail:
+        "Security / Workloads / Sandbox OU hierarchy. SCPs: deny_root on all OUs, region_lock on " +
+        "Workloads+Security, require_tags on Workloads. Admin stack deploys via GitHub Actions only — " +
+        "portal dispatches plan, never applies locally.",
+    },
+    {
+      label: "Blueprint catalog",
+      detail:
+        "4 pre-approved stacks (EKS App, Serverless API, Static Site, Data Platform) with cost ranges " +
+        "and compliance badges. Pick a stack, fill in team/app/env, get Terragrunt HCL files instantly.",
+    },
+    {
+      label: "Full audit trail",
+      detail:
+        "Every plan, apply, and AI request logged with username, timestamp, and details. " +
+        "RBAC: viewer / operator / admin with prod guardrails. " +
+        "Plan result polled from GitHub Actions and surfaced in the portal — green or red, no tab-switching.",
+    },
+  ],
+  metrics: [
+    { label: "Terraform modules", value: "43" },
+    { label: "Stack blueprints", value: "4" },
+    { label: "Stored credentials", value: "0" },
+  ],
+  techStackCategories: [
+    { category: "Frontend",    tools: ["React 19", "Vite", "TailwindCSS"] },
+    { category: "Backend",     tools: ["FastAPI", "Python 3.11+", "SQLite"] },
+    { category: "AI",          tools: ["Gemini Flash", "RAG (ChromaDB)", "Anthropic SDK"] },
+    { category: "IaC",         tools: ["Terraform", "Terragrunt", "43 AWS modules"] },
+    { category: "Platform",    tools: ["GitHub Actions", "OIDC", "AWS Organizations"] },
+    { category: "Delivery",    tools: ["Docker", "Railway", "GitOps"] },
+  ],
+};
+
 export const RESUME_EXPERIENCE = [
   {
     company: "Citigroup (CISO Organization)",
@@ -872,4 +942,6 @@ export const RECRUITER_FOLLOW_UP_POOLS = {
 export const RESUME_LINKS = [
   { label: "LinkedIn", url: "https://linkedin.com/in/nareshvusiri", icon: "linkedin" },
   { label: "GitHub — SRE AI Copilot", url: "https://github.com/nareshram5855/sre-ai-copilot", icon: "github" },
+  { label: "Stackport — Live demo", url: "https://nareshvusiri.dev/stackport", icon: "external" },
+  { label: "GitHub — Stackport (infra-platform)", url: "https://github.com/nareshram5855/infra-platform", icon: "github" },
 ];

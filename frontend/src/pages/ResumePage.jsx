@@ -10,6 +10,7 @@ import { ResumeHero } from "../components/resume/ResumeHero.jsx";
 import { AdminStatsPanel } from "../components/resume/AdminStatsPanel.jsx";
 import { LinkedInRecommendationsSection } from "../components/resume/LinkedInRecommendationCard.jsx";
 import { DemoLauncher } from "../components/demo/DemoLauncher.jsx";
+import { StackportProjectCard } from "../components/resume/StackportProjectCard.jsx";
 import { RecruiterAskPanel } from "../components/resume/RecruiterAskPanel.jsx";
 import { RecruiterFeedbackPanel } from "../components/resume/RecruiterFeedbackPanel.jsx";
 import { getRecruiterSessionId } from "../utils/recruiterSession.js";
@@ -338,6 +339,8 @@ export function ResumePage() {
         </section>
 
         <DemoLauncher />
+
+        <StackportProjectCard />
 
         {/* Experience */}
         <section>
