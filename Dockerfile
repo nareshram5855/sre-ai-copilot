@@ -6,6 +6,16 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
+# ── Stage 2: Build Stackport demo at /stackport/ ─────────────────────────────
+FROM node:20-alpine AS stackport-builder
+RUN apk add --no-cache git
+WORKDIR /stackport
+RUN git clone --depth 1 --branch admin/org-bootstrap \
+    https://github.com/nareshram5855/infra-platform.git .
+WORKDIR /stackport/ui/frontend
+RUN npm ci
+RUN npx vite build --mode demo
+
 # ── Stage 2: Python runtime ───────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm
 
@@ -31,6 +41,8 @@ COPY backend/ ./backend/
 
 # Built frontend static files
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+# Stackport demo served at /stackport/ via the portfolio backend
+COPY --from=stackport-builder /stackport/ui/frontend/dist ./frontend/dist/stackport
 
 # SQLite data: backend/data (audit/checkpoints) + /data volume (recruiter analytics on Railway)
 RUN mkdir -p backend/data /data \

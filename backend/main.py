@@ -27,7 +27,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from backend.config import get_settings
 from backend.monitoring.profiler import ProfilerMiddleware
-from backend.routers import agent_react, agent_run, alertmanager, audit, chat, demo, docs, events, execute, health, incident_analysis, incidents, knowledge, observability, profiler, rca, recruiter, runbook, triage
+from backend.routers import agent_react, agent_run, alertmanager, audit, blueprints, chat, demo, docs, events, execute, health, incident_analysis, incidents, knowledge, observability, profiler, rca, recruiter, runbook, triage, stackport_demo
 from backend.voice.config import get_voice_settings
 from backend.voice import router as voice_router
 
@@ -139,6 +139,7 @@ app.include_router(health.router)
 app.include_router(profiler.router)
 app.include_router(triage.router)
 app.include_router(knowledge.router)
+app.include_router(blueprints.router)
 app.include_router(chat.router)
 app.include_router(runbook.router)
 app.include_router(rca.router)
@@ -160,6 +161,7 @@ app.include_router(observability.router)
 app.include_router(docs.router)
 app.include_router(recruiter.router)
 app.include_router(demo.router)
+app.include_router(stackport_demo.router)
 
 # ── Static frontend (production / Railway) ────────────────────────────────────
 # Served only when the React build exists (i.e. in Docker / after npm run build).
@@ -169,6 +171,24 @@ from fastapi.responses import FileResponse
 _dist = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "frontend", "dist"))
 if _os.path.isdir(_dist):
     from fastapi.staticfiles import StaticFiles
+
+    # ── Stackport demo at /stackport/* ──────────────────────────────────────────
+    _sp_dist = _os.path.join(_dist, "stackport")
+    if _os.path.isdir(_sp_dist):
+        _sp_assets = _os.path.join(_sp_dist, "assets")
+        if _os.path.isdir(_sp_assets):
+            app.mount("/stackport/assets", StaticFiles(directory=_sp_assets), name="stackport-assets")
+
+        @app.get("/stackport/{sp_path:path}", include_in_schema=False)
+        async def serve_stackport(sp_path: str):
+            if sp_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="Not Found")
+            candidate = _os.path.normpath(_os.path.join(_sp_dist, sp_path))
+            if candidate.startswith(_sp_dist) and _os.path.isfile(candidate):
+                return FileResponse(candidate)
+            return FileResponse(_os.path.join(_sp_dist, "index.html"))
+
+        logger.info("Serving Stackport demo from frontend/dist/stackport")
 
     # Serve fingerprinted assets (JS/CSS/fonts) directly; fall back to index.html
     # for all other paths so React Router can handle client-side navigation.
