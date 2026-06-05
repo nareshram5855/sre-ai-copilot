@@ -27,7 +27,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from backend.config import get_settings
 from backend.monitoring.profiler import ProfilerMiddleware
-from backend.routers import agent_react, agent_run, alertmanager, audit, blueprints, chat, demo, docs, events, execute, health, incident_analysis, incidents, knowledge, observability, profiler, rca, recruiter, runbook, triage, stackport_demo
+from backend.routers import agent_react, agent_run, alertmanager, audit, chat, demo, docs, events, execute, health, incident_analysis, incidents, knowledge, observability, profiler, rca, recruiter, runbook, triage, stackport_demo
 from backend.voice.config import get_voice_settings
 from backend.voice import router as voice_router
 
@@ -139,7 +139,6 @@ app.include_router(health.router)
 app.include_router(profiler.router)
 app.include_router(triage.router)
 app.include_router(knowledge.router)
-app.include_router(blueprints.router)
 app.include_router(chat.router)
 app.include_router(runbook.router)
 app.include_router(rca.router)
