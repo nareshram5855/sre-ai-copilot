@@ -464,6 +464,23 @@ export const STACKPORT_PROJECT = {
         "RBAC: viewer / operator / admin with prod guardrails. " +
         "Plan result polled from GitHub Actions and surfaced in the portal — green or red, no tab-switching.",
     },
+    {
+      label: "AI AutoFix — GitOps Patch Bot",
+      detail:
+        "When a pipeline fails, paste the error into the portal. AI reads the broken .hcl / .yml config, " +
+        "generates a minimal patch, creates a branch (ai/fix-{module}-{ts}), commits, pushes, and opens a " +
+        "GitHub PR — all in one click. Secrets, .tfstate, and credentials are hard-blocked from patching. " +
+        "Human review required before merge.",
+    },
+  ],
+  autofixFlow: [
+    "Pipeline fails in GitHub Actions",
+    "Paste error into Stackport portal",
+    "AI reads broken .hcl / .yml files via RAG",
+    "Generates minimal patch (only what caused the error)",
+    "Creates branch  ai/fix-{module}-{timestamp}",
+    "Commits + pushes + opens GitHub PR",
+    "Human reviews diff → merges or rejects",
   ],
   metrics: [
     { label: "Terraform modules", value: "43" },

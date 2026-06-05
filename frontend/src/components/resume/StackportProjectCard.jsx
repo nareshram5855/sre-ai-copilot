@@ -1,7 +1,7 @@
-import { ExternalLink, Github, Layers, Shield, Cpu, GitBranch, Cloud } from "lucide-react";
+import { ExternalLink, Github, Layers, Shield, Cpu, GitBranch, Cloud, GitPullRequest, Zap, ArrowRight } from "lucide-react";
 import { STACKPORT_PROJECT } from "../../data/resumeContent.js";
 
-const HIGHLIGHT_ICONS = [Layers, Cpu, Shield, Cloud, GitBranch, Layers];
+const HIGHLIGHT_ICONS = [Layers, Cpu, Shield, Cloud, GitBranch, Layers, GitPullRequest, Zap];
 
 export function StackportProjectCard() {
   const p = STACKPORT_PROJECT;
@@ -24,7 +24,6 @@ export function StackportProjectCard() {
       </div>
 
       <div className="panel-card relative overflow-hidden border-violet-800/25">
-        {/* Subtle glow */}
         <div
           className="pointer-events-none absolute inset-0 opacity-30"
           style={{ background: "radial-gradient(ellipse at 20% 50%, rgba(139,92,246,0.12), transparent 70%)" }}
@@ -50,32 +49,66 @@ export function StackportProjectCard() {
           <p className="text-sm text-gray-300 leading-relaxed max-w-2xl mb-4">{p.summary}</p>
 
           {/* Metrics */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="grid grid-cols-3 gap-2 mb-5">
             {p.metrics.map((m) => (
-              <div
-                key={m.label}
-                className="rounded-lg border border-sre-border/45 bg-sre-bg/35 px-2.5 py-2 text-center"
-              >
+              <div key={m.label} className="rounded-lg border border-sre-border/45 bg-sre-bg/35 px-2.5 py-2 text-center">
                 <p className="text-sm font-bold text-white font-mono">{m.value}</p>
                 <p className="text-[9px] text-stone-500 mt-0.5 leading-snug">{m.label}</p>
               </div>
             ))}
           </div>
 
-          {/* Highlights */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-            {p.highlights.map((h, i) => {
-              const Icon = HIGHLIGHT_ICONS[i] ?? Layers;
-              return (
-                <div key={h.label} className="rounded-lg border border-sre-border/40 bg-sre-bg/25 p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Icon size={13} className="text-violet-400 shrink-0" />
-                    <p className="text-xs font-semibold text-white">{h.label}</p>
+          {/* ── AI AutoFix spotlight ───────────────────────────────────────── */}
+          {p.autofixFlow && (
+            <div className="mb-5 rounded-xl border border-amber-500/20 bg-amber-950/10 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <GitPullRequest size={15} className="text-amber-400 shrink-0" />
+                <p className="text-sm font-semibold text-white">AI AutoFix — GitOps Patch Bot</p>
+                <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-amber-500/25 text-amber-300 bg-amber-950/30 ml-auto shrink-0">
+                  Built-in
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
+                When a GitHub Actions pipeline fails, the portal reads the broken config, asks AI to generate
+                a minimal patch, creates a branch, commits, and opens a PR — one click, human review required.
+              </p>
+              {/* Flow steps */}
+              <div className="flex flex-wrap items-center gap-1">
+                {p.autofixFlow.map((step, i) => (
+                  <div key={i} className="flex items-center gap-1">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/40 border border-amber-500/15 text-amber-200/80 whitespace-nowrap">
+                      {step}
+                    </span>
+                    {i < p.autofixFlow.length - 1 && (
+                      <ArrowRight size={10} className="text-amber-500/40 shrink-0" />
+                    )}
                   </div>
-                  <p className="text-[11px] text-gray-400 leading-relaxed">{h.detail}</p>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+              <p className="text-[10px] text-stone-500 mt-2">
+                Hard-blocked from patching: <code className="text-stone-400">*.tfstate</code>,{" "}
+                <code className="text-stone-400">credentials</code>, <code className="text-stone-400">.env</code>,{" "}
+                <code className="text-stone-400">private_key</code> — secrets never touched.
+              </p>
+            </div>
+          )}
+
+          {/* Highlights grid — all except autofix (shown above) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            {p.highlights
+              .filter(h => !h.label.includes("AutoFix"))
+              .map((h, i) => {
+                const Icon = HIGHLIGHT_ICONS[i] ?? Layers;
+                return (
+                  <div key={h.label} className="rounded-lg border border-sre-border/40 bg-sre-bg/25 p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon size={13} className="text-violet-400 shrink-0" />
+                      <p className="text-xs font-semibold text-white">{h.label}</p>
+                    </div>
+                    <p className="text-[11px] text-gray-400 leading-relaxed">{h.detail}</p>
+                  </div>
+                );
+              })}
           </div>
 
           {/* Tech stack */}
