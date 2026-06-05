@@ -178,6 +178,11 @@ if _os.path.isdir(_dist):
         if _os.path.isdir(_sp_assets):
             app.mount("/stackport/assets", StaticFiles(directory=_sp_assets), name="stackport-assets")
 
+        # Explicit route for /stackport (no trailing slash) — path params need ≥1 char
+        @app.get("/stackport", include_in_schema=False)
+        async def serve_stackport_root():
+            return FileResponse(_os.path.join(_sp_dist, "index.html"))
+
         @app.get("/stackport/{sp_path:path}", include_in_schema=False)
         async def serve_stackport(sp_path: str):
             if sp_path.startswith("api/"):
@@ -196,11 +201,20 @@ if _os.path.isdir(_dist):
     async def serve_spa(full_path: str):
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not Found")
+        # Never let the catch-all swallow Stackport paths
+        if full_path == "stackport" or full_path.startswith("stackport/"):
+            sp_dist = _os.path.join(_dist, "stackport")
+            if _os.path.isdir(sp_dist):
+                sp_rel = full_path[len("stackport/"):] if full_path.startswith("stackport/") else ""
+                c = _os.path.normpath(_os.path.join(sp_dist, sp_rel)) if sp_rel else None
+                if c and c.startswith(sp_dist) and _os.path.isfile(c):
+                    return FileResponse(c)
+                return FileResponse(_os.path.join(sp_dist, "index.html"))
         # Serve the real file if it exists (assets, favicon, etc.)
         candidate = _os.path.normpath(_os.path.join(_dist, full_path))
         if candidate.startswith(_dist) and _os.path.isfile(candidate):
             return FileResponse(candidate)
-        # SPA fallback
+        # SPA fallback — portfolio app
         return FileResponse(_os.path.join(_dist, "index.html"))
 
     # Mount /assets specifically so fingerprinted JS/CSS are also served via
