@@ -89,6 +89,7 @@ _SKILL_ALIASES: dict[str, list[str]] = {
     "observability": ["monitoring stack", "monitoring tools"],
     "terraform": ["iac", "infrastructure as code"],
     "prometheus": ["prom"],
+    "opentelemetry": ["otel"],
     "grafana": [],
     "jenkins": [],
     "argocd": ["gitops"],
@@ -133,6 +134,8 @@ _INCIDENT_OBSERVABILITY_HINTS = (
     "24/7",
     "slo",
     "sli",
+    "opentelemetry",
+    "otel",
 )
 
 _HIRING_MANAGER_QUERY_HINTS = (
@@ -232,6 +235,27 @@ _BEHAVIORAL_QUERY_HINTS = (
     "natural language query",
     "semantic search",
     "vector embeddings",
+    "coin",
+    "identity network",
+    "citi one identity network",
+    "route 53 weighted",
+    "weighted routing",
+    "active-active",
+    "active active",
+    "pingfederate",
+    "pingfederate federation",
+    "federation config",
+    "r2d2",
+    "arc platform",
+    "genai observability",
+    "incident diagnosis",
+    "root cause narrative",
+    "most complex migration",
+    "complex migration",
+    "authentication backbone",
+    "sso migration",
+    "single sign-on migration",
+    "single sign on migration",
 )
 
 _PORTFOLIO_QUERY_HINTS = (
@@ -775,6 +799,19 @@ def _build_behavioral_boosted_documents(query: str) -> list[tuple[Document, floa
             h in q for h in ("secret rotation", "vault agent", "sidecar", "vault injector",
                              "secret management", "downtime", "openshift migration", "vm to container",
                              "restart", "secrets", "hashicorp vault")
+        ):
+            score = 0.0
+        elif theme == "coin_migration" and any(
+            h in q for h in ("coin", "identity network", "most complex migration", "complex migration",
+                             "zero downtime", "route 53", "weighted routing", "active-active", "active active",
+                             "federation", "pingfederate", "rollback", "authentication backbone", "sso migration",
+                             "single sign-on migration", "single sign on migration", "stateful")
+        ):
+            score = 0.0
+        elif theme == "genai_observability" and any(
+            h in q for h in ("genai", "generative ai", "rag pipeline", "retrieval augmented",
+                             "r2d2", "arc platform", "opentelemetry", "otel", "incident diagnosis",
+                             "ai observability", "llm agent", "vector store", "embeddings")
         ):
             score = 0.0
         elif _is_behavioral_query(query):

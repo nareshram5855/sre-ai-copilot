@@ -9,7 +9,7 @@ from typing import AsyncIterator
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.config import get_settings
@@ -543,9 +543,7 @@ def recruiter_stats() -> dict:
     return store.get_stats()
 
 
-@router.get("/admin/stats")
-def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKEN env var")) -> dict:
-    """Admin-only: detailed analytics — total/unique/daily views, recent sessions, feedback count."""
+def _check_admin_token(token: str) -> None:
     cfg = get_settings()
     expected = (cfg.admin_token or "").strip()
     if not expected:
@@ -555,6 +553,12 @@ def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKE
         )
     if (token or "").strip() != expected:
         raise HTTPException(status_code=401, detail="Invalid admin token")
+
+
+@router.get("/admin/stats")
+def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKEN env var")) -> dict:
+    """Admin-only: detailed analytics — total/unique/daily views, recent sessions, feedback count."""
+    _check_admin_token(token)
     try:
         store = _require_recruiter_store()
         logger.info("Fetching recruiter stats...")
@@ -574,6 +578,48 @@ def admin_stats(token: str = Query(..., description="Admin token from ADMIN_TOKE
             "recent_sessions": [],
             "daily_views": [],
         }
+
+
+class InterviewGradePayload(BaseModel):
+    question: str = Field(..., min_length=2, max_length=1000)
+    situation: str = Field(..., min_length=2, max_length=4000)
+    action: str = Field(..., min_length=2, max_length=4000)
+    result: str = Field(..., min_length=2, max_length=4000)
+    answer: str = Field(..., min_length=1, max_length=8000)
+
+
+@router.get("/admin/practice/stories")
+def admin_practice_stories(token: str = Query(..., description="Admin token from ADMIN_TOKEN env var")) -> dict:
+    """Admin-only: behavioral STAR stories for self-quizzing before interviews."""
+    _check_admin_token(token)
+    stories = getattr(rc, "RESUME_BEHAVIORAL_STORIES", []) or []
+    return {
+        "stories": [
+            {
+                "theme": s["theme"],
+                "title": s["title"],
+                "question": s["question"],
+                "situation": s["situation"],
+                "action": s["action"],
+                "result": s["result"],
+                "skills": s.get("skills", []),
+            }
+            for s in stories
+        ]
+    }
+
+
+@router.post("/admin/practice/grade")
+def admin_practice_grade(
+    payload: InterviewGradePayload,
+    token: str = Query(..., description="Admin token from ADMIN_TOKEN env var"),
+) -> dict:
+    """Admin-only: grade a practice answer against its reference STAR story via the local LLM."""
+    _check_admin_token(token)
+    from backend.knowledge.interview_coach import grade_answer
+
+    feedback = grade_answer(payload.question, payload.situation, payload.action, payload.result, payload.answer)
+    return {"feedback": feedback}
 
 
 @router.post("/feedback")

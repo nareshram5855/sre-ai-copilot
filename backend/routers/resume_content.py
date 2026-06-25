@@ -26,6 +26,7 @@ RESUME_SUMMARY = (
 )
 
 RESUME_SUMMARY_DETAILS = [
+    "Led the zero-downtime migration of COIN (Citi One Identity Network) — Citi's global SSO/OAuth2/IAM backbone — from on-prem data centers to multi-region active-active AWS EKS using phased Route 53 weighted routing and live bi-directional PingFederate federation for instant rollback.",
     "Involved in Linux administration activities like troubleshooting of regular issues, configuration issues, applying patches, kernel upgrades, package management, diagnosing resource utilization and file system issues.",
     "Exposed to all aspects of the software development lifecycle (SDLC) such as Analysis, Planning, and Developing, Testing, and Implementing Post-production analysis of the projects using methodologies such as Agile, Scrum Models.",
     "Experience in the areas of DevOps, CI/CD Pipeline, Build and release management and Linux/Windows Administration. Proficient in prioritizing and completing tasks in a timely manner.",
@@ -82,6 +83,8 @@ RESUME_SKILLS = {
     ],
     "ai": [
         "Claude AI · Citi AI Workspaces · Generative AI for IaC & code review",
+        "Citi ARC GenAI platform · R2D2 LLM governance proxy (audit-logged, CISO-compliant LLM calls)",
+        "RAG pipeline on Prometheus + OpenTelemetry + logs for grounded incident root-cause narratives",
         "LangGraph multi-agent orchestration (portfolio project)",
         "RAG · ChromaDB · local LLM (Ollama) · kubectl-ai patterns",
         "Human-in-the-loop remediation · audit trails · Docker Model Runner",
@@ -221,6 +224,7 @@ RESUME_SKILL_MATRIX = [
             "New Relic",
             "Prometheus",
             "Grafana",
+            "OpenTelemetry",
             "Splunk",
             "ELK Stack",
             "ITRS",
@@ -384,11 +388,13 @@ RESUME_EXPERIENCE = [
         "period": "Apr 2025 – Present",
         "location": "Irving, TX",
         "description": (
-            "At Citigroup, supporting the CISO organization, responsible for migrating critical identity and access management services to the AWS cloud, ensuring compliance, scalability, and operational resilience. Modernizing legacy on-prem IAM solutions, including Ping Identity products, and transitioning them to a secure, containerized platform on Amazon."
+            "At Citigroup, supporting the CISO organization, led the zero-downtime migration of COIN (Citi One Identity Network) — the SSO/OAuth2/IAM platform every Citi application authenticates through — from on-premises data centers to a multi-region active-active AWS EKS platform. Modernized the legacy Ping Identity stack (PingFederate, PingAccess, PingDirectory) into a secure, containerized platform on AWS, then built a RAG-based GenAI observability layer on top of it for incident diagnosis."
         ),
         "bullets": [
+            "Led the zero-downtime migration of COIN (Citi One Identity Network) — Citi's global SSO/OAuth2/IAM backbone, used for every employee login and every customer-facing and internal application — from on-prem data centers (GRN/SWDC, GRN/MWDC) to multi-region active-active AWS EKS (us-east-1 and us-east-2). Used phased Route 53 weighted-routing traffic shifts (5% → 20% → 50% → 100%) with live bi-directional PingFederate federation to on-prem for instant rollback at every stage — zero authentication outages for any downstream application.",
+            "Designed 43 Terragrunt/Terraform modules to provision the full COIN platform on EKS — PingFederate, PingAccess, PingDirectory (COIN LDAP), OAuth2 Client Store, KBS service, and COIN Provisioning Service — fronted by Apigee (external API gateway behind Akamai + ELB, plus an on-prem internal Apigee runtime) with Route 53 DNS health-check failover.",
+            "Built a RAG-based AI observability agent on Citi's internal ARC GenAI platform — all LLM calls routed through Citi's R2D2 governance proxy for audit logging and CISO compliance — correlating Prometheus metrics, OpenTelemetry traces, and application logs into a vector store to generate grounded root-cause incident narratives, auto-creating ServiceNow INC tickets via Netcool.",
             "Built and maintained CI/CD workflows using Tekton, LightSpeed, and Harness for containerized microservice deployments across dev, staging, and production environments.",
-            "Migrated critical identity services, including PingFederate, PingAccess, and PingDirectory, from on-premises infrastructure to AWS cloud using EKS, Terraform, and containerization best practices.",
             "Led the modernization of legacy monolithic applications by refactoring them into microservices, deploying on Amazon EKS and ECS using scalable CI/CD practices.",
             "Configured and managed ArgoCD for GitOps-based continuous delivery of microservices to EKS clusters, enabling automated sync, drift detection, and rollback capabilities across multiple environments.",
             "Led the migration of on-premises IAM applications and vendor services to AWS EKS and EC2, ensuring minimal downtime, compliance with CISO security standards, and optimizing cloud resources for performance and cost-efficiency.",
@@ -407,7 +413,7 @@ RESUME_EXPERIENCE = [
             "Actively involved in exploring and adopting next-generation Generative AI projects within the organization, evaluating AI-driven solutions for DevOps automation, intelligent monitoring, and operational efficiency improvements.",
         ],
         "environment": (
-            "AWS, Terraform, LightSpeed, Tekton, OpenShift, Harness, IaC, GitHub Actions, Oracle, Jenkins, Splunk, CLI, GitHub, Maven, Docker, EKS, ECS, Fargate, Unix/Linux, EC2, VPC, Security Groups, IAM, Amazon S3, SNS, SQS, KMS, NACL, Secrets Manager, Ping, PingDirectory, Apigee, Elasticsearch, Prometheus, Grafana, Netcool, ServiceNow, Karpenter, ArgoCD, Ansible, IIS, Windows Server, Claude AI, Generative AI, SiteMinder"
+            "AWS, Terraform, Terragrunt, LightSpeed, Tekton, OpenShift, Harness, IaC, GitHub Actions, Oracle, Jenkins, Splunk, CLI, GitHub, Maven, Docker, EKS, ECS, Fargate, Unix/Linux, EC2, VPC, Security Groups, IAM, Amazon S3, SNS, SQS, KMS, NACL, Secrets Manager, Route 53 (weighted routing), Apigee (external + internal), Akamai, Ping, PingFederate, PingAccess, PingDirectory, OAuth2, SAML, LDAP, Elasticsearch, Prometheus, Grafana, OpenTelemetry, Netcool, ServiceNow, Karpenter, ArgoCD, Ansible, IIS, Windows Server, Citi ARC (GenAI platform), R2D2 (LLM governance proxy), RAG, vector embeddings, Claude AI, Generative AI, SiteMinder, multi-region active-active EKS"
         ),
     },
     {
@@ -627,7 +633,9 @@ RESUME_OBSERVABILITY_JOURNEY = {
         "Anthem: Splunk log analysis; CloudWatch and Nagios; ELK in the environment stack.",
         "Verizon: Istio observability with Prometheus and Grafana; distributed tracing for service interactions.",
         "Toyota: Datadog, Prometheus, and Grafana across EC2, ECS, and EKS workloads.",
-        "Citigroup: Prometheus and Grafana on EKS; Elasticsearch with Netcool deduplication feeding ServiceNow INC auto-creation.",
+        "Citigroup: Prometheus, OpenTelemetry, and structured logs feeding a RAG pipeline on Citi's ARC GenAI platform "
+        "(R2D2-governed) for LLM-generated incident root-cause narratives; Elasticsearch with Netcool deduplication "
+        "feeding ServiceNow INC auto-creation for COIN.",
     ],
     "recruiter_hook": (
         "For hiring managers: I did not inherit observability — I built it from shell scripts, NGINX log access, "
@@ -652,6 +660,8 @@ RESUME_OBSERVABILITY_JOURNEY = {
         "logging",
         "metrics",
         "apm",
+        "opentelemetry",
+        "otel",
     ],
 }
 
@@ -816,14 +826,115 @@ RESUME_BEHAVIORAL_STORIES = [
             "migrations in the engagement."
         ),
     },
+    {
+        "question": "Walk me through the most complex migration you've done.",
+        "theme": "coin_migration",
+        "skills": [
+            "zero downtime migration",
+            "route 53 weighted routing",
+            "pingfederate",
+            "pingaccess",
+            "pingdirectory",
+            "oauth2",
+            "saml",
+            "ldap",
+            "multi-region active-active",
+            "eks",
+            "terraform",
+            "terragrunt",
+            "identity and access management",
+            "federation",
+            "apigee",
+            "akamai",
+            "dns failover",
+        ],
+        "title": "Zero-downtime migration of COIN — Citi's global identity backbone — to AWS EKS",
+        "situation": (
+            "COIN — Citi One Identity Network — is the SSO, OAuth2, and IAM platform every Citi application "
+            "authenticates through: every employee login, every customer-facing app, and every internal system "
+            "needing SSO or OAuth2 routes through it. It was running entirely on-prem across two Citi data centers "
+            "(GRN/SWDC and GRN/MWDC) — limited scalability, manual provisioning, long change cycles, no cloud-native "
+            "HA. The mandate was to move it to AWS EKS with no maintenance window: if COIN goes down even briefly, "
+            "authentication fails enterprise-wide."
+        ),
+        "action": (
+            "Containerized every component — PingFederate, PingAccess, PingDirectory (COIN LDAP), and the OAuth2 "
+            "Client Store — and stood up the EKS infrastructure in parallel with Terraform/Terragrunt (43 modules "
+            "covering the full platform). Built and maintained live bi-directional PingFederate federation between "
+            "the new EKS clusters and the existing on-prem PingFederate nodes so both environments stayed in sync "
+            "throughout. Cut traffic over with phased Route 53 weighted routing — 5% to EKS, monitor, then 20%, "
+            "50%, 100% — while PingDirectory's native multi-master replication kept the LDAP and OAuth2 Client "
+            "Store consistent across both environments, validated at every milestone. Rollback at any phase was "
+            "just flipping the Route 53 weight back, since on-prem stayed fully live and federated. The hardest "
+            "part was PingFederate federation config — every node, on-prem and EKS, had to know about all its "
+            "peers with consistent connection profiles, and the COIN Provisioning Service had to keep OAuth2 "
+            "client registrations in sync across both environments without duplicates or conflicts."
+        ),
+        "result": (
+            "Zero downtime, zero authentication outages for any downstream Citi application during the entire "
+            "migration. On-prem stayed active until we had 30+ days of clean production traffic on EKS. The result "
+            "is a multi-region active-active architecture (EKS in us-east-1 and us-east-2), fronted by Apigee "
+            "(external via ELB behind Akamai, plus an on-prem internal Apigee runtime) with Route 53 health-check "
+            "failover, Karpenter for node autoscaling, ArgoCD for GitOps config, and Prometheus/Grafana for "
+            "observability — a fundamentally more resilient platform than what existed before."
+        ),
+    },
+    {
+        "question": "Tell me about the AI/GenAI work you did at Citi.",
+        "theme": "genai_observability",
+        "skills": [
+            "genai",
+            "rag",
+            "retrieval augmented generation",
+            "opentelemetry",
+            "otel",
+            "prometheus",
+            "vector store",
+            "embeddings",
+            "llm agents",
+            "netcool",
+            "servicenow",
+            "incident automation",
+            "arc platform",
+            "r2d2 proxy",
+            "ai governance",
+        ],
+        "title": "RAG-based incident diagnosis agent on Citi's ARC platform — Prometheus + OpenTelemetry + logs",
+        "situation": (
+            "After the COIN migration, the platform was well-instrumented — Prometheus metrics, OpenTelemetry "
+            "traces, structured logs — but during incidents, operators still had to manually correlate all three "
+            "signal types to find root cause. A Prometheus alert would fire, and diagnosing it meant "
+            "cross-referencing OTel traces (which service was slow) with application logs (which requests were "
+            "failing) by hand — slow under incident pressure."
+        ),
+        "action": (
+            "Built an AI observability agent on Citi's internal GenAI platform, ARC, with every LLM call routed "
+            "through Citi's R2D2 proxy for governance and audit logging — CISO policy prohibits direct calls to "
+            "external LLM APIs from production workloads, and R2D2 enforces per-app token budgets, audit-logs every "
+            "prompt and completion, and pins model versions. The pipeline ingests Prometheus metrics, OTel traces, "
+            "and logs, chunks and embeds them into a vector store. When an incident fires, the RAG pipeline "
+            "retrieves the most relevant correlated signals and the LLM generates a grounded, evidence-backed "
+            "incident narrative — probable root cause, affected services, recommended next steps. The agent then "
+            "triggers ServiceNow INC creation via Netcool, so the on-call engineer starts with a pre-written "
+            "diagnosis instead of raw alerts."
+        ),
+        "result": (
+            "Reduced mean-time-to-diagnose for COIN authentication incidents — on-call engineers get a grounded "
+            "root-cause narrative instead of three separate dashboards to cross-reference. Unlike a generic tool "
+            "like Datadog AI Insights, this runs entirely inside Citi's security perimeter, is seeded with "
+            "COIN-specific runbooks and past incident resolutions, and plugs natively into the existing "
+            "Netcool → ServiceNow workflow already in production."
+        ),
+    },
 ]
 
 RESUME_ACHIEVEMENTS = [
     {
-        "title": "IAM & zero-trust at Citigroup",
+        "title": "Zero-downtime COIN migration at Citigroup",
         "detail": (
-            "Migrating Ping Identity stack to AWS EKS with ArgoCD GitOps, Karpenter scaling, "
-            "and SOX-compliant audit tooling."
+            "Migrated COIN (Citi One Identity Network) — Citi's global SSO/OAuth2/IAM backbone — from on-prem to "
+            "multi-region active-active AWS EKS using phased Route 53 weighted routing and live bi-directional "
+            "PingFederate federation: zero downtime, zero authentication outages, with ArgoCD GitOps and Karpenter scaling."
         ),
     },
     {
@@ -860,10 +971,22 @@ TECHNICAL_HIGHLIGHTS = [
         ),
     },
     {
-        "title": "EKS + ArgoCD GitOps at Citigroup (CISO org)",
+        "title": "Zero-downtime COIN migration — Citi's global identity backbone",
         "detail": (
-            "Migrating Ping Identity IAM stack (PingFederate, PingAccess, PingDirectory) to AWS EKS with Terraform. "
-            "ArgoCD GitOps CD with automated sync, drift detection, and rollback; Karpenter node scaling; Tekton/Harness CI/CD."
+            "Led the on-prem → AWS EKS migration of COIN (Citi One Identity Network) — the SSO/OAuth2/IAM platform "
+            "every Citi application authenticates through. Phased Route 53 weighted routing (5%→20%→50%→100%) with "
+            "live bi-directional PingFederate federation to on-prem (GRN/SWDC, GRN/MWDC) gave instant rollback at "
+            "every stage. Result: multi-region active-active EKS (us-east-1/us-east-2), zero downtime, zero auth "
+            "outages, 43 Terragrunt modules, Karpenter + ArgoCD GitOps."
+        ),
+    },
+    {
+        "title": "GenAI incident diagnosis on Citi's ARC platform (R2D2-governed)",
+        "detail": (
+            "Built a RAG pipeline correlating Prometheus metrics, OpenTelemetry traces, and structured logs into a "
+            "vector store; an LLM agent on Citi's internal ARC GenAI platform — all calls routed through the R2D2 "
+            "governance proxy for audit logging and CISO compliance — generates a grounded root-cause narrative and "
+            "opens ServiceNow INCs via Netcool, reducing mean-time-to-diagnose for COIN authentication incidents."
         ),
     },
     {

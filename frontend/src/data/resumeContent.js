@@ -415,7 +415,7 @@ export const STACKPORT_PROJECT = {
   badge: "Internal Developer Platform · Open source",
   role: "Independent portfolio build — not employer production work",
   period: "2026 – Present",
-  demoUrl: "https://nareshvusiri.dev/stackport",
+  demoUrl: "/stackport",
   repoUrl: "https://github.com/nareshram5855/infra-platform",
   repoLabel: "github.com/nareshram5855/infra-platform",
   summary:

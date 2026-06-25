@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { X, Eye, Users, MessageSquare, TrendingUp, Clock, Calendar, Bot, Play, FileDown } from "lucide-react";
+import { X, Eye, Users, MessageSquare, TrendingUp, Clock, Calendar, Bot, Play, FileDown, GraduationCap, BarChart3 } from "lucide-react";
+import { InterviewPracticePanel } from "./InterviewPracticePanel.jsx";
 
 const SESSION_KEY = "sreai.adminToken";
 
@@ -8,10 +9,14 @@ export function AdminStatsPanel({ onClose }) {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [view, setView] = useState("stats");
 
   useEffect(() => {
     const saved = sessionStorage.getItem(SESSION_KEY);
-    if (saved) fetchStats(saved);
+    if (saved) {
+      setToken(saved);
+      fetchStats(saved);
+    }
   }, []);
 
   async function fetchStats(t) {
@@ -68,13 +73,34 @@ export function AdminStatsPanel({ onClose }) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-sre-border sticky top-0 bg-sre-surface z-10">
           <div>
-            <h2 className="text-white font-semibold text-sm">Resume Analytics</h2>
+            <h2 className="text-white font-semibold text-sm">{view === "practice" ? "Interview Practice" : "Resume Analytics"}</h2>
             <p className="text-gray-500 text-[11px] mt-0.5">Admin only · not visible to visitors</p>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors p-1">
             <X size={16} />
           </button>
         </div>
+
+        {stats && (
+          <div className="flex gap-1.5 px-6 pt-4">
+            <button
+              onClick={() => setView("stats")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                view === "stats" ? "bg-indigo-600 text-white" : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              <BarChart3 size={12} /> Analytics
+            </button>
+            <button
+              onClick={() => setView("practice")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                view === "practice" ? "bg-indigo-600 text-white" : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              <GraduationCap size={12} /> Interview Practice
+            </button>
+          </div>
+        )}
 
         <div className="p-6">
           {!stats ? (
@@ -99,6 +125,8 @@ export function AdminStatsPanel({ onClose }) {
                 {loading ? "Verifying…" : "View analytics"}
               </button>
             </form>
+          ) : view === "practice" ? (
+            <InterviewPracticePanel token={token} />
           ) : (
             <div className="space-y-6">
 
