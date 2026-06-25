@@ -165,6 +165,170 @@ async def sp_ai_full_status():
         "message": "" if avail else "AI disabled in demo — set GOOGLE_API_KEY on the server",
     }
 
+# ── Users & audit ─────────────────────────────────────────────────────────────
+_MOCK_USERS = [
+    {"id": 1, "username": "naresh",  "role": "admin",    "teams": [{"team_id": 1, "slug": "payments", "team_role": "team_admin"}],    "created_at": "2026-05-01T09:00:00Z"},
+    {"id": 2, "username": "priya",   "role": "operator", "teams": [{"team_id": 2, "slug": "platform", "team_role": "team_operator"}], "created_at": "2026-05-10T11:30:00Z"},
+    {"id": 3, "username": "raj",     "role": "viewer",   "teams": [{"team_id": 3, "slug": "data-eng", "team_role": "team_viewer"}],   "created_at": "2026-05-15T14:00:00Z"},
+]
+
+_MOCK_AUDIT = [
+    {"id": 1, "username": "naresh", "action": "deploy.apply",            "env": "prod",    "module": "compute/eks",    "details": "payments-api EKS cluster applied",      "created_at": "2026-06-03T11:05:00Z"},
+    {"id": 2, "username": "naresh", "action": "deploy.plan",             "env": "dev",     "module": "data/rds",       "details": "payments RDS plan passed",              "created_at": "2026-06-03T10:00:00Z"},
+    {"id": 3, "username": "priya",  "action": "deploy.plan",             "env": "staging", "module": "networking/vpc", "details": "data-eng VPC plan",                     "created_at": "2026-06-02T15:30:00Z"},
+    {"id": 4, "username": "naresh", "action": "ai.provision",            "env": "dev",     "module": None,             "details": "app=payments-api team=payments",         "created_at": "2026-06-02T09:00:00Z"},
+    {"id": 5, "username": "naresh", "action": "admin.stack.trigger_plan","env": "admin",   "module": None,             "details": "branch=admin/org-bootstrap",             "created_at": "2026-06-02T05:22:00Z"},
+    {"id": 6, "username": "priya",  "action": "deploy.plan",             "env": "staging", "module": "compute/ecs",   "details": "ECS plan — missing subnet_ids",          "created_at": "2026-06-01T14:00:00Z"},
+    {"id": 7, "username": "raj",    "action": "onboard.create",          "env": "dev",     "module": None,             "details": "project=fintech-api",                   "created_at": "2026-05-31T10:00:00Z"},
+]
+
+@router.get("/users")
+async def sp_users():
+    return {"users": _MOCK_USERS}
+
+@router.post("/users")
+async def sp_create_user(request: Request):
+    body = await request.json()
+    return {"id": 99, "username": body.get("username", "new-user"), "role": body.get("role", "viewer"), "api_key": "demo-key-shown-once-xxxx", "teams": [], "created_at": "2026-06-25T00:00:00Z"}
+
+@router.post("/users/{user_id}/rotate-key")
+async def sp_rotate_key(user_id: int):
+    return {"api_key": f"demo-rotated-key-{user_id}-xxxx"}
+
+@router.delete("/users/{user_id}")
+async def sp_delete_user(user_id: int):
+    return {"deleted": True}
+
+@router.post("/users/{user_id}/teams")
+async def sp_assign_team(user_id: int, request: Request):
+    return {"ok": True}
+
+@router.delete("/users/{user_id}/teams/{team_id}")
+async def sp_remove_team(user_id: int, team_id: int):
+    return {"ok": True}
+
+@router.get("/audit")
+async def sp_audit(limit: int = 30):
+    return {"entries": _MOCK_AUDIT[:limit], "total": len(_MOCK_AUDIT)}
+
+# ── My Team (GitHub workflow runs with full mock data) ─────────────────────────
+_MOCK_RUNS = [
+    {"id": "r1", "repo": "nareshram5855/infra-platform", "project_id": "p1", "name": "Terragrunt Plan",  "head_branch": "feat/redis-cache",    "status": "completed", "conclusion": "success", "url": "https://github.com/nareshram5855/infra-platform/actions/runs/1", "created_at": "2026-06-03T11:00:00Z"},
+    {"id": "r2", "repo": "nareshram5855/infra-platform", "project_id": "p1", "name": "Terragrunt Plan",  "head_branch": "feat/eks-scale",       "status": "completed", "conclusion": "success", "url": "https://github.com/nareshram5855/infra-platform/actions/runs/2", "created_at": "2026-06-02T15:00:00Z"},
+    {"id": "r3", "repo": "nareshram5855/infra-platform", "project_id": "p1", "name": "Terragrunt Apply", "head_branch": "main",                 "status": "completed", "conclusion": "success", "url": "https://github.com/nareshram5855/infra-platform/actions/runs/3", "created_at": "2026-06-01T16:00:00Z"},
+    {"id": "r4", "repo": "nareshram5855/infra-platform", "project_id": "p1", "name": "Admin Stack Plan", "head_branch": "admin/org-bootstrap",  "status": "completed", "conclusion": "success", "url": "https://github.com/nareshram5855/infra-platform/actions/runs/4", "created_at": "2026-06-02T05:22:00Z"},
+    {"id": "r5", "repo": "nareshram5855/infra-platform", "project_id": "p1", "name": "CI",               "head_branch": "feat/rds-backup",      "status": "completed", "conclusion": "failure", "url": "https://github.com/nareshram5855/infra-platform/actions/runs/5", "created_at": "2026-06-01T08:00:00Z"},
+]
+
+@router.get("/team/workspace")
+async def sp_team():
+    return {
+        "configured": True,
+        "projects": [{"id": "p1", "repo": "nareshram5855/infra-platform", "slug": "infra-platform"}],
+        "open_iac_issues_count": 3,
+        "failed_runs_count": 1,
+        "recent_runs": _MOCK_RUNS[:5],
+        "open_iac_issues": [
+            {"repo": "nareshram5855/infra-platform", "number": 42, "title": "feat: add Redis cache layer to payments API", "url": "https://github.com/nareshram5855/infra-platform/issues/42"},
+            {"repo": "nareshram5855/infra-platform", "number": 41, "title": "feat: scale EKS node group to 5 nodes",      "url": "https://github.com/nareshram5855/infra-platform/issues/41"},
+            {"repo": "nareshram5855/infra-platform", "number": 40, "title": "fix: RDS backup retention to 30 days (prod)","url": "https://github.com/nareshram5855/infra-platform/issues/40"},
+        ],
+        "team": {"id": 1, "slug": "payments", "display_name": "Payments"},
+        "members": [
+            {"username": "naresh", "role": "admin"},
+            {"username": "priya",  "role": "operator"},
+            {"username": "raj",    "role": "viewer"},
+        ],
+    }
+
+@router.get("/team/runs")
+async def sp_team_runs(status: str = "all", limit: int = 50):
+    runs = _MOCK_RUNS
+    if status == "failed":
+        runs = [r for r in runs if r.get("conclusion") == "failure"]
+    elif status == "success":
+        runs = [r for r in runs if r.get("conclusion") == "success"]
+    return {"runs": runs[:limit]}
+
+@router.get("/team/runs/{run_id}/detail")
+async def sp_run_detail(run_id: str):
+    run = next((r for r in _MOCK_RUNS if r["id"] == run_id), None)
+    if not run:
+        return {"id": run_id, "status": "completed", "conclusion": "success", "jobs": [], "created_at": "2026-06-01T00:00:00Z"}
+    is_failure = run["conclusion"] == "failure"
+    return {
+        "id": run_id,
+        "status": run["status"],
+        "conclusion": run["conclusion"],
+        "created_at": run["created_at"],
+        "failed_job":  {"name": "terragrunt-plan"} if is_failure else None,
+        "failed_step": {"name": "Run terragrunt plan"} if is_failure else None,
+        "log_excerpt": (
+            "Error: Failed to init terraform backend\n"
+            "  Error: error configuring S3 Backend: AccessDenied: Access Denied\n"
+            "  status code: 403, request id: abc123\n\n"
+            "Hint: Ensure the IAM role has s3:GetObject on the state bucket."
+        ) if is_failure else None,
+        "jobs": [
+            {
+                "id": "j1",
+                "name": "terragrunt-plan",
+                "steps": [
+                    {"number": 1, "name": "Checkout",           "status": "completed", "conclusion": "success"},
+                    {"number": 2, "name": "Configure AWS creds", "status": "completed", "conclusion": "success"},
+                    {"number": 3, "name": "Setup Terraform",     "status": "completed", "conclusion": "success"},
+                    {"number": 4, "name": "Run terragrunt plan", "status": "completed", "conclusion": "failure" if is_failure else "success"},
+                ],
+            }
+        ],
+    }
+
+@router.post("/team/runs/{run_id}/ask")
+async def sp_run_ask(run_id: str, request: Request):
+    """SSE stream: AI explains a failed workflow run."""
+    from fastapi.responses import StreamingResponse
+    import asyncio, json as _json
+
+    run = next((r for r in _MOCK_RUNS if r["id"] == run_id), None)
+
+    async def _stream():
+        if not _ai_available():
+            yield "data: AI not configured — set GOOGLE_API_KEY on the server.\n\n"
+            yield "data: [DONE]\n\n"
+            return
+        try:
+            from google import genai
+            from google.genai import types as _gtypes
+            from backend.config import get_settings
+            cfg = get_settings()
+            client = genai.Client(api_key=cfg.google_api_key)
+            log = (
+                "Error: Failed to init terraform backend\n"
+                "  Error: error configuring S3 Backend: AccessDenied: Access Denied\n"
+                "  status code: 403, request id: abc123"
+            )
+            prompt = f"GitHub Actions workflow '{run['name']}' on branch '{run['head_branch']}' failed.\nLog:\n{log}\nExplain the cause and the exact fix."
+            stream = await client.aio.models.generate_content_stream(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=_gtypes.GenerateContentConfig(
+                    system_instruction="You are a senior SRE. Explain CI/CD failures and provide specific Terraform/AWS fixes.",
+                    temperature=0.1, max_output_tokens=512,
+                    thinking_config=_gtypes.ThinkingConfig(thinking_budget=0),
+                ),
+            )
+            async for chunk in stream:
+                token = chunk.text or ""
+                if token:
+                    yield f"data: {token}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            yield f"data: Error: {exc}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
 # ── Other pages (skeleton) ────────────────────────────────────────────────────
 @router.get("/pipelines")
 async def sp_pipelines():       return {"pipelines": []}
@@ -176,9 +340,3 @@ async def sp_pipelines_apps():  return {"apps": []}
 async def sp_onboard():         return {"projects": []}
 @router.get("/onboard/catalog")
 async def sp_onboard_cat():     return {"catalog": []}
-@router.get("/users")
-async def sp_users():           return {"users": [{"id":1,"username":"naresh","role":"admin"},{"id":2,"username":"priya","role":"operator"},{"id":3,"username":"raj","role":"viewer"}]}
-@router.get("/audit")
-async def sp_audit():           return {"items": [], "total": 0}
-@router.get("/team/workspace")
-async def sp_team():            return {"team": {"id":1,"slug":"payments","display_name":"Payments"},"members":[{"username":"naresh","role":"admin"},{"username":"priya","role":"operator"},{"username":"raj","role":"viewer"}],"recent_runs":[],"open_issues":[]}
