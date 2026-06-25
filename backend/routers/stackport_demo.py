@@ -147,14 +147,23 @@ async def sp_trigger_plan():
 async def sp_trigger_deploy():
     return {"status": "dispatched", "message": "Demo mode — see github.com/nareshram5855/infra-platform/actions", "actions_url": "https://github.com/nareshram5855/infra-platform/actions"}
 
-# ── AI (disabled in demo) ─────────────────────────────────────────────────────
+# ── AI status (reflects real GOOGLE_API_KEY presence) ─────────────────────────
+def _ai_available() -> bool:
+    from backend.config import get_settings
+    return bool((get_settings().google_api_key or "").strip())
+
 @router.get("/ai/architect/status")
 async def sp_ai_status():
-    return {"available": False, "model": "gemini-2.5-flash-lite", "demo": True}
+    return {"available": _ai_available(), "model": "gemini-2.5-flash", "demo": True}
 
 @router.get("/ai/status")
 async def sp_ai_full_status():
-    return {"available": False, "provider": "demo", "message": "AI disabled in demo — see github.com/nareshram5855/infra-platform"}
+    avail = _ai_available()
+    return {
+        "available": avail,
+        "provider": "gemini" if avail else "demo",
+        "message": "" if avail else "AI disabled in demo — set GOOGLE_API_KEY on the server",
+    }
 
 # ── Other pages (skeleton) ────────────────────────────────────────────────────
 @router.get("/pipelines")

@@ -27,7 +27,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from backend.config import get_settings
 from backend.monitoring.profiler import ProfilerMiddleware
-from backend.routers import agent_react, agent_run, alertmanager, audit, chat, demo, docs, events, execute, health, incident_analysis, incidents, knowledge, observability, profiler, rca, recruiter, runbook, triage, stackport_demo
+from backend.routers import agent_react, agent_run, alertmanager, audit, chat, demo, docs, events, execute, health, incident_analysis, incidents, knowledge, observability, profiler, rca, recruiter, runbook, triage, stackport_demo, stackport_ai
 from backend.voice.config import get_voice_settings
 from backend.voice import router as voice_router
 
@@ -161,6 +161,7 @@ app.include_router(docs.router)
 app.include_router(recruiter.router)
 app.include_router(demo.router)
 app.include_router(stackport_demo.router)
+app.include_router(stackport_ai.router)
 
 # ── Static frontend (production / Railway) ────────────────────────────────────
 # Served only when the React build exists (i.e. in Docker / after npm run build).
