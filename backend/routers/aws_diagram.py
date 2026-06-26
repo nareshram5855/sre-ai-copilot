@@ -373,11 +373,31 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
 
     node_map: dict[str, dict] = {n["id"]: n for n in nodes_raw}
 
+    # ── Strip common app-name prefix that Gemini often adds to every label ────
+    # e.g. "Payments ALB" "Payments EKS" "Payments RDS" → "ALB" "EKS" "RDS"
+    _KNOWN_AWS = {
+        "alb","nlb","waf","cloudfront","route53","apigw","apigateway","cognito",
+        "eks","ecs","ec2","lambda","fargate","rds","aurora","dynamodb","elasticache",
+        "s3","sqs","sns","kinesis","kms","iam","ecr","cloudwatch","xray","msk",
+        "users","user","internet","client","browser","on-prem","vpn",
+    }
+    all_labels = [n.get("label","") for n in nodes_raw if n.get("label","")]
+    first_words = [lbl.split()[0].lower() for lbl in all_labels if " " in lbl]
+    if first_words:
+        from collections import Counter
+        common_word, cnt = Counter(first_words).most_common(1)[0]
+        # Strip if it's a repeated non-AWS word (app/team name prefix)
+        if cnt >= max(2, len(nodes_raw) // 2) and common_word not in _KNOWN_AWS:
+            for nid, n in list(node_map.items()):
+                lbl = n.get("label", "")
+                if lbl.lower().startswith(common_word + " "):
+                    node_map[nid] = {**n, "label": lbl[len(common_word)+1:]}
+
     # ── Layout constants ──────────────────────────────────────────────────────
     PAD       = 30
     ZONE_PAD  = 22   # inner padding of zone box
     BOX_GAP_H = 22   # horizontal gap between icon boxes in a column
-    BOX_GAP_V = 42   # vertical gap — extra room for labels below icons
+    BOX_GAP_V = 52   # vertical gap — extra room for labels below icons (was 42)
     ZONE_GAP  = 22   # gap between zone columns
     CHIP_H    = 22   # zone label chip height (sits on border)
     NODE_TOP  = 18   # offset below zone top before first icon center
@@ -433,9 +453,10 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
     else:
         vpc_x1 = vpc_x2 = 0
 
-    # Canvas height: title(50) + aws-border gap(12) + vpc-chip + zone + legend
+    # Canvas height: extra 48px for node label text below bottom icon row
     LEGEND_H = 32
-    H = ZONE_TOP + max_zone_h + LEGEND_H + PAD
+    NODE_LABEL_OVERHANG = 48   # label text sits below icon bottom edge
+    H = ZONE_TOP + max_zone_h + NODE_LABEL_OVERHANG + LEGEND_H + PAD
 
     # ── Node center positions ─────────────────────────────────────────────────
     node_cx: dict[str, int] = {}
@@ -512,22 +533,24 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
             f'fill="{zstyle["fill"]}" stroke="{zstyle["stroke"]}" stroke-width="1.5" {dash_attr}/>'
         )
 
-        # Label chip sits ON the top border line (so it doesn't consume interior space)
+        # Label chip sits ON the top border line
         raw_label = z.get("label", "")
-        # Shorten long zone labels to two lines
+        # Use 2-word max to keep chips short
         label_words = raw_label.split()
         if len(label_words) > 2:
             short = " ".join(label_words[:2])
         else:
             short = raw_label
 
-        chip_w = max(len(short) * 7 + 20, 80)
-        chip_x = zx + zw // 2 - chip_w // 2
+        # Cap chip width to zone width minus margin so adjacent chips never overlap
+        chip_w = min(max(len(short) * 7 + 16, 54), zw - 8)
+        chip_x = max(zx + 4, zx + zw // 2 - chip_w // 2)
+        font_sz = "8.5" if len(short) > 10 else "9.5"
         svg += [
             f'<rect x="{chip_x}" y="{zy - CHIP_H // 2}" width="{chip_w}" height="{CHIP_H}" '
             f'rx="6" fill="{zstyle["fill"]}" stroke="{zstyle["stroke"]}" stroke-width="1.5"/>',
-            f'<text x="{zx + zw // 2}" y="{zy + 5}" text-anchor="middle" '
-            f'font-size="9.5" font-weight="700" fill="{zstyle["label_color"]}" letter-spacing="0.5">'
+            f'<text x="{chip_x + chip_w // 2}" y="{zy + 5}" text-anchor="middle" '
+            f'font-size="{font_sz}" font-weight="700" fill="{zstyle["label_color"]}" letter-spacing="0.4">'
             f'{short.upper()}</text>',
         ]
 
