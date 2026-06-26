@@ -129,9 +129,11 @@ Correct directional edges (verify every arrow makes real AWS sense):
   SQS/SNS →|triggers| Lambda                  (event-driven patterns)
 
 Rules:
-- seq numbers are only on primary request-flow edges (the numbered happy path); set null for supporting services
+- seq numbers only on primary request-flow edges (happy path 1→2→3…); set null for supporting/platform edges
 - dashed:true for observability, IAM, encryption edges; dashed:false for data/request flow
-- 6-14 nodes max, every node must be in exactly one zone
+- 6-12 nodes max, every node in exactly one zone
+- node labels MUST be the AWS service name only — "ALB", "EKS", "RDS", "CloudFront" — NEVER prefix with app/team name
+- For supporting services (IAM, KMS, CloudWatch) only add ONE edge each — do NOT add separate monitor/authz edge per compute and per data node, pick the most important one
 - deploy_order in modules: networking first, compute second, data third, platform last
 - Always include security/kms when rds/s3/elasticache used; always include monitoring/cloudwatch"""
 

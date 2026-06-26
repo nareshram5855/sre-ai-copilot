@@ -325,25 +325,40 @@ def _icon_box(cx: int, cy: int, node: dict, order: int | None = None) -> str:
 # ── Arrow renderer ────────────────────────────────────────────────────────────
 
 def _arrow(x1: int, y1: int, x2: int, y2: int,
-           label: str = "", seq: int | None = None, dashed: bool = False) -> str:
-    stroke = "#475569" if dashed else "#1e293b"
+           label: str = "", seq: int | None = None, dashed: bool = False,
+           mid_offset: int = 0) -> str:
+    stroke   = "#64748b" if dashed else "#1e293b"
+    marker   = "ah-dashed" if dashed else "ah"
     dash_attr = 'stroke-dasharray="6,4"' if dashed else ""
+    w        = 2.0 if not dashed else 1.5
     mid_x, mid_y = (x1 + x2) // 2, (y1 + y2) // 2
+
+    # Perpendicular offset for label (avoids stacking over numbered circles)
+    if mid_offset and (x2 != x1 or y2 != y1):
+        dx, dy = x2 - x1, y2 - y1
+        dist = max((dx*dx + dy*dy) ** 0.5, 1)
+        lx = mid_x + int(-dy / dist * mid_offset)
+        ly = mid_y + int(dx / dist * mid_offset)
+    else:
+        lx, ly = mid_x, mid_y
 
     parts = [
         f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
-        f'stroke="{stroke}" stroke-width="1.8" {dash_attr} marker-end="url(#ah)"/>'
+        f'stroke="{stroke}" stroke-width="{w}" {dash_attr} marker-end="url(#{marker})"/>'
     ]
 
     if seq is not None:
         parts += [
-            f'<circle cx="{mid_x}" cy="{mid_y}" r="11" fill="{stroke}"/>',
-            f'<text x="{mid_x}" y="{mid_y+4}" text-anchor="middle" font-size="10" font-weight="700" fill="white">{seq}</text>',
+            f'<circle cx="{mid_x}" cy="{mid_y}" r="11" fill="#1e293b"/>',
+            f'<text x="{mid_x}" y="{mid_y+4}" text-anchor="middle" '
+            f'font-size="10" font-weight="700" fill="white">{seq}</text>',
         ]
     elif label:
+        tw = len(label) * 6 + 14
         parts += [
-            f'<rect x="{mid_x-20}" y="{mid_y-9}" width="40" height="16" rx="4" fill="white" stroke="#e2e8f0" stroke-width="1"/>',
-            f'<text x="{mid_x}" y="{mid_y+4}" text-anchor="middle" font-size="9" fill="{stroke}">{label}</text>',
+            f'<rect x="{lx-tw//2}" y="{ly-9}" width="{tw}" height="16" rx="4" '
+            f'fill="white" stroke="#e2e8f0" stroke-width="1" opacity="0.95"/>',
+            f'<text x="{lx}" y="{ly+4}" text-anchor="middle" font-size="9" fill="{stroke}">{label}</text>',
         ]
 
     return "\n".join(parts)
@@ -356,41 +371,49 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
     nodes_raw: list[dict] = diagram.get("nodes", [])
     edges_raw: list[dict] = diagram.get("edges", [])
 
-    # Index nodes by id
     node_map: dict[str, dict] = {n["id"]: n for n in nodes_raw}
 
-    # ── Layout ───────────────────────────────────────────────────────────────
-    PAD = 28
-    ZONE_PAD = 18       # padding inside zone box
-    BOX_GAP_H = 20      # horizontal gap between icon boxes in a zone
-    BOX_GAP_V = 26      # vertical gap between rows
-    ZONE_GAP = 16       # gap between zone columns
-    TOP = 72            # y start of zone boxes
-    LABEL_H = 22        # zone header height
-    MAX_PER_COL = 3     # max nodes per column within a zone
+    # ── Layout constants ──────────────────────────────────────────────────────
+    PAD       = 30
+    ZONE_PAD  = 22   # inner padding of zone box
+    BOX_GAP_H = 22   # horizontal gap between icon boxes in a column
+    BOX_GAP_V = 42   # vertical gap — extra room for labels below icons
+    ZONE_GAP  = 22   # gap between zone columns
+    CHIP_H    = 22   # zone label chip height (sits on border)
+    NODE_TOP  = 18   # offset below zone top before first icon center
+    MAX_ROWS  = 4    # max nodes stacked vertically in a zone column
 
-    # Compute per-zone node sets
     zone_nodes: dict[str, list[str]] = {z["id"]: z.get("nodes", []) for z in zones_raw}
 
-    # Compute zone widths based on node count
-    def _zone_width(node_ids: list[str]) -> int:
-        cols = (len(node_ids) + MAX_PER_COL - 1) // MAX_PER_COL if node_ids else 1
-        return ZONE_PAD * 2 + cols * _BOX + (cols - 1) * BOX_GAP_H
-
-    # Determine if VPC box needed
     vpc_zone_types = {"vpc_public", "vpc_private"}
     vpc_zones = [z for z in zones_raw if z.get("type") in vpc_zone_types]
     has_vpc = bool(vpc_zones)
+    VPC_WRAP = 14   # extra padding around vpc zone cluster
 
-    # Zone heights
-    def _zone_height(node_ids: list[str]) -> int:
-        rows = min(len(node_ids), MAX_PER_COL) if node_ids else 1
-        return LABEL_H + ZONE_PAD * 2 + rows * _BOX + (rows - 1) * BOX_GAP_V
+    # Each zone box starts this far down (leaves room for VPC label)
+    ZONE_TOP = PAD + 62 + (CHIP_H + VPC_WRAP if has_vpc else 0)
 
-    max_zone_h = max((_zone_height(zone_nodes.get(z["id"], [])) for z in zones_raw), default=200)
-    max_zone_h = max(max_zone_h, 200)
+    def _zone_cols(nids: list[str]) -> int:
+        return max(1, (len(nids) + MAX_ROWS - 1) // MAX_ROWS)
 
-    # Assign x positions to zones
+    def _zone_width(nids: list[str]) -> int:
+        cols = _zone_cols(nids)
+        return ZONE_PAD * 2 + cols * _BOX + (cols - 1) * BOX_GAP_H
+
+    def _zone_height(nids: list[str]) -> int:
+        rows = min(len(nids), MAX_ROWS) if nids else 1
+        # icon + label space + top/bottom padding
+        return CHIP_H + NODE_TOP + rows * (_BOX + 26) + (rows - 1) * (BOX_GAP_V - _BOX - 26) + ZONE_PAD
+
+    # Recalculate: zone_height = chip + top_pad + rows*(box + label_gap) + bottom_pad
+    def _zone_h(nids: list[str]) -> int:
+        rows = min(len(nids), MAX_ROWS) if nids else 1
+        return CHIP_H + ZONE_PAD + rows * _BOX + (rows - 1) * BOX_GAP_V + 36 + ZONE_PAD
+
+    max_zone_h = max((_zone_h(zone_nodes.get(z["id"], [])) for z in zones_raw), default=260)
+    max_zone_h = max(max_zone_h, 220)
+
+    # X positions
     x = PAD
     zone_x: dict[str, int] = {}
     zone_w: dict[str, int] = {}
@@ -402,36 +425,37 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
         x += w + ZONE_GAP
 
     W = x - ZONE_GAP + PAD
-    VPC_PAD = 12
 
-    # VPC bounding box
-    vpc_x1 = min((zone_x[z["id"]] for z in vpc_zones), default=0) - VPC_PAD
-    vpc_x2 = max((zone_x[z["id"]] + zone_w[z["id"]] for z in vpc_zones), default=W) + VPC_PAD
+    # VPC wrapper box
+    if has_vpc:
+        vpc_x1 = min(zone_x[z["id"]] for z in vpc_zones) - VPC_WRAP
+        vpc_x2 = max(zone_x[z["id"]] + zone_w[z["id"]] for z in vpc_zones) + VPC_WRAP
+    else:
+        vpc_x1 = vpc_x2 = 0
 
-    # Total canvas height
-    legend_h = 30
-    H = TOP + max_zone_h + (32 if has_vpc else 0) + legend_h + PAD
+    # Canvas height: title(50) + aws-border gap(12) + vpc-chip + zone + legend
+    LEGEND_H = 32
+    H = ZONE_TOP + max_zone_h + LEGEND_H + PAD
 
-    # ── Compute node center positions ─────────────────────────────────────────
+    # ── Node center positions ─────────────────────────────────────────────────
     node_cx: dict[str, int] = {}
     node_cy: dict[str, int] = {}
 
     for z in zones_raw:
-        zid = z["id"]
+        zid  = z["id"]
         nids = zone_nodes.get(zid, [])
-        zx = zone_x[zid]
-        zw = zone_w[zid]
-        cols = (len(nids) + MAX_PER_COL - 1) // MAX_PER_COL if nids else 1
+        zx   = zone_x[zid]
 
         for i, nid in enumerate(nids):
-            col = i // MAX_PER_COL
-            row = i % MAX_PER_COL
+            col = i // MAX_ROWS
+            row = i % MAX_ROWS
             cx = zx + ZONE_PAD + col * (_BOX + BOX_GAP_H) + _BOX // 2
-            cy = TOP + (32 if has_vpc else 0) + LABEL_H + ZONE_PAD + row * (_BOX + BOX_GAP_V) + _BOX // 2
+            # First node starts below chip + padding; subsequent spaced by BOX+BOX_GAP_V
+            cy = ZONE_TOP + CHIP_H + ZONE_PAD + row * (_BOX + BOX_GAP_V) + _BOX // 2
             node_cx[nid] = cx
             node_cy[nid] = cy
 
-    # ── SVG ──────────────────────────────────────────────────────────────────
+    # ── SVG header ────────────────────────────────────────────────────────────
     svg: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
         f'style="background:#f8fafc;font-family:Inter,\'Segoe UI\',system-ui,sans-serif;">',
@@ -439,100 +463,137 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
         '<marker id="ah" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto">'
         '<polygon points="0 0, 9 3.5, 0 7" fill="#1e293b"/>'
         '</marker>'
+        '<marker id="ah-dashed" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto">'
+        '<polygon points="0 0, 9 3.5, 0 7" fill="#64748b"/>'
+        '</marker>'
         '</defs>',
         f'<rect x="0" y="0" width="{W}" height="{H}" fill="#f8fafc"/>',
-        # Title
-        f'<rect x="0" y="0" width="{W}" height="50" fill="#1e293b"/>',
-        f'<text x="{W//2}" y="31" text-anchor="middle" font-size="16" font-weight="700" fill="white">{arch_name}</text>',
-        f'<text x="{W-PAD}" y="31" text-anchor="end" font-size="10" fill="#FF9900" font-weight="600">Stackport AI</text>',
-        # AWS Cloud outer border
-        f'<rect x="{PAD//2}" y="58" width="{W-PAD}" height="{H-66}" rx="8" '
-        f'fill="none" stroke="#FF9900" stroke-width="1.8" stroke-dasharray="10,5"/>',
-        f'<rect x="{PAD//2+2}" y="51" width="110" height="20" rx="4" fill="white" stroke="#FF9900" stroke-width="1.5"/>',
-        f'<rect x="{PAD//2+6}" y="55" width="16" height="12" rx="3" fill="#FF9900"/>',
-        f'<text x="{PAD//2+14}" y="64" text-anchor="middle" font-size="7.5" font-weight="900" fill="white">aws</text>',
-        f'<text x="{PAD//2+72}" y="65" text-anchor="middle" font-size="11" font-weight="700" fill="#232F3E">AWS Cloud</text>',
+        # Title bar
+        f'<rect x="0" y="0" width="{W}" height="52" fill="#1e293b"/>',
+        f'<text x="{W//2}" y="32" text-anchor="middle" font-size="17" font-weight="700" fill="white">{arch_name}</text>',
+        f'<text x="{W-PAD}" y="32" text-anchor="end" font-size="10.5" fill="#FF9900" font-weight="700">Stackport AI</text>',
+        # AWS Cloud dashed border
+        f'<rect x="{PAD//2}" y="60" width="{W-PAD}" height="{H-68}" rx="10" '
+        f'fill="#FFFBF5" stroke="#FF9900" stroke-width="2" stroke-dasharray="10,5"/>',
+        # AWS chip on border
+        f'<rect x="{PAD//2+6}" y="53" width="116" height="24" rx="6" fill="white" stroke="#FF9900" stroke-width="1.5"/>',
+        f'<rect x="{PAD//2+10}" y="57" width="18" height="14" rx="3" fill="#FF9900"/>',
+        f'<text x="{PAD//2+19}" y="67" text-anchor="middle" font-size="8" font-weight="900" fill="white">aws</text>',
+        f'<text x="{PAD//2+76}" y="70" text-anchor="middle" font-size="11.5" font-weight="700" fill="#232F3E">AWS Cloud</text>',
     ]
 
-    # VPC bounding box
+    # ── VPC wrapper ───────────────────────────────────────────────────────────
     if has_vpc:
-        vpc_top = TOP + 28
-        vpc_bot = TOP + max_zone_h + 12
+        vpc_top = ZONE_TOP - VPC_WRAP - CHIP_H
+        vpc_bot = ZONE_TOP + max_zone_h + VPC_WRAP
         svg += [
-            f'<rect x="{vpc_x1}" y="{vpc_top}" width="{vpc_x2-vpc_x1}" height="{vpc_bot-vpc_top}" rx="8" '
-            f'fill="#f0fdf4" stroke="#3DAA5C" stroke-width="1.8" stroke-dasharray="6,3"/>',
-            f'<text x="{vpc_x1+10}" y="{vpc_top+16}" font-size="10" font-weight="700" fill="#15803d">VPC</text>',
+            f'<rect x="{vpc_x1}" y="{vpc_top}" width="{vpc_x2-vpc_x1}" height="{vpc_bot-vpc_top}" rx="10" '
+            f'fill="#f0fdf4" stroke="#3DAA5C" stroke-width="2" stroke-dasharray="6,3"/>',
+            f'<rect x="{vpc_x1+8}" y="{vpc_top-10}" width="44" height="20" rx="5" '
+            f'fill="white" stroke="#3DAA5C" stroke-width="1.5"/>',
+            f'<text x="{vpc_x1+30}" y="{vpc_top+4}" text-anchor="middle" '
+            f'font-size="10" font-weight="700" fill="#15803d">VPC</text>',
         ]
 
-    # Zone boxes
+    # ── Zone boxes with label chip on top border ───────────────────────────────
     for z in zones_raw:
-        zid = z["id"]
+        zid    = z["id"]
         zstyle = _ZONE_STYLE.get(z.get("type", "aws_managed"), _ZONE_STYLE["aws_managed"])
-        zx = zone_x[zid]
-        zw = zone_w[zid]
-        zy = TOP + (32 if has_vpc else 0)
-        zh = max_zone_h
+        zx     = zone_x[zid]
+        zw     = zone_w[zid]
+        zy     = ZONE_TOP
+        zh     = max_zone_h
 
-        dash = f'stroke-dasharray="{zstyle["dash"]}"' if zstyle["dash"] != "none" else ""
-        svg += [
+        dash_attr = f'stroke-dasharray="{zstyle["dash"]}"' if zstyle["dash"] != "none" else ""
+
+        # Zone background box
+        svg.append(
             f'<rect x="{zx}" y="{zy}" width="{zw}" height="{zh}" rx="8" '
-            f'fill="{zstyle["fill"]}" stroke="{zstyle["stroke"]}" stroke-width="1.5" {dash}/>',
-            f'<text x="{zx+zw//2}" y="{zy+15}" text-anchor="middle" font-size="9" '
-            f'font-weight="700" fill="{zstyle["label_color"]}" letter-spacing="0.8">'
-            f'{z.get("label","").upper()}</text>',
+            f'fill="{zstyle["fill"]}" stroke="{zstyle["stroke"]}" stroke-width="1.5" {dash_attr}/>'
+        )
+
+        # Label chip sits ON the top border line (so it doesn't consume interior space)
+        raw_label = z.get("label", "")
+        # Shorten long zone labels to two lines
+        label_words = raw_label.split()
+        if len(label_words) > 2:
+            short = " ".join(label_words[:2])
+        else:
+            short = raw_label
+
+        chip_w = max(len(short) * 7 + 20, 80)
+        chip_x = zx + zw // 2 - chip_w // 2
+        svg += [
+            f'<rect x="{chip_x}" y="{zy - CHIP_H // 2}" width="{chip_w}" height="{CHIP_H}" '
+            f'rx="6" fill="{zstyle["fill"]}" stroke="{zstyle["stroke"]}" stroke-width="1.5"/>',
+            f'<text x="{zx + zw // 2}" y="{zy + 5}" text-anchor="middle" '
+            f'font-size="9.5" font-weight="700" fill="{zstyle["label_color"]}" letter-spacing="0.5">'
+            f'{short.upper()}</text>',
         ]
 
-    # Node icon boxes
+    # ── Icon boxes ────────────────────────────────────────────────────────────
     for z in zones_raw:
         for nid in zone_nodes.get(z["id"], []):
             node = node_map.get(nid, {"id": nid, "label": nid, "service": nid})
-            cx = node_cx.get(nid)
-            cy = node_cy.get(nid)
+            cx, cy = node_cx.get(nid), node_cy.get(nid)
             if cx is None or cy is None:
                 continue
             svg.append(_icon_box(cx, cy, node))
 
-    # Edges — draw solid first, then dashed on top
-    def _edge_endpoints(e: dict):
-        fid, tid = e["from"], e["to"]
-        x1, y1 = node_cx.get(fid), node_cy.get(fid)
-        x2, y2 = node_cx.get(tid), node_cy.get(tid)
+    # ── Edges ─────────────────────────────────────────────────────────────────
+    def _edge_pts(e: dict):
+        x1, y1 = node_cx.get(e["from"]), node_cy.get(e["from"])
+        x2, y2 = node_cx.get(e["to"]),   node_cy.get(e["to"])
         if None in (x1, y1, x2, y2):
             return None
-        # Shorten to icon box edge
-        half = _BOX // 2 + 4
+        half = _BOX // 2 + 5
         dx, dy = x2 - x1, y2 - y1
         dist = max((dx*dx + dy*dy)**0.5, 1)
-        sx, sy = dx/dist * half, dy/dist * half
+        sx, sy = dx / dist * half, dy / dist * half
         return int(x1+sx), int(y1+sy), int(x2-sx), int(y2-sy)
+
+    # Only show label on the FIRST dashed edge from each source node
+    shown_dashed_labels: set[str] = set()
 
     for dashed_pass in (False, True):
         for e in edges_raw:
             if bool(e.get("dashed")) != dashed_pass:
                 continue
-            pts = _edge_endpoints(e)
+            pts = _edge_pts(e)
             if not pts:
                 continue
             ax1, ay1, ax2, ay2 = pts
-            seq = e.get("seq") if not e.get("dashed") else None
-            svg.append(_arrow(ax1, ay1, ax2, ay2,
-                              label=e.get("label", ""),
-                              seq=seq,
-                              dashed=bool(e.get("dashed"))))
+            seq   = e.get("seq") if not e.get("dashed") else None
+            label = e.get("label", "")
 
-    # Legend
-    legend_items = [
-        ("#FF9900", "Compute"), ("#8C4FFF", "Networking"), ("#3F8624", "Data"),
-        ("#DD344C", "Security"), ("#E7157B", "Monitoring"), ("#C7131F", "CI/CD"),
+            # Suppress duplicate labels from the same dashed source
+            if e.get("dashed") and label:
+                src = e["from"]
+                if src in shown_dashed_labels:
+                    label = ""
+                else:
+                    shown_dashed_labels.add(src)
+
+            # Offset label slightly off midpoint to avoid overlapping circle badges
+            mid_offset = 18 if seq is not None else 0
+
+            svg.append(_arrow(ax1, ay1, ax2, ay2,
+                              label=label, seq=seq,
+                              dashed=bool(e.get("dashed")),
+                              mid_offset=mid_offset))
+
+    # ── Legend ────────────────────────────────────────────────────────────────
+    items = [
+        ("#FF9900","Compute"),("#8C4FFF","Networking"),("#3F8624","Data/Storage"),
+        ("#DD344C","Security"),("#E7157B","Monitoring"),("#C7131F","CI/CD"),
     ]
-    lx = PAD
-    ly = H - 14
-    for color, lbl in legend_items:
+    lx, ly = PAD, H - 12
+    for color, lbl in items:
         svg += [
             f'<rect x="{lx}" y="{ly-8}" width="12" height="12" rx="3" fill="{color}"/>',
             f'<text x="{lx+16}" y="{ly+2}" font-size="9.5" fill="#64748b">{lbl}</text>',
         ]
-        lx += 96
+        lx += 100
 
     svg.append("</svg>")
     return "\n".join(svg)
