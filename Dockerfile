@@ -8,6 +8,8 @@ RUN npm run build
 
 # ── Stage 2: Build Stackport demo at /stackport/ ─────────────────────────────
 FROM node:20-alpine AS stackport-builder
+# Bump INFRA_VER to force re-clone of infra-platform on next build
+ARG INFRA_VER=3
 RUN apk add --no-cache git
 WORKDIR /stackport
 RUN git clone --depth 1 --branch admin/org-bootstrap \

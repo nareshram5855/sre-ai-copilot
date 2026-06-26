@@ -614,3 +614,87 @@ def generate_aws_svg(architecture: dict[str, Any]) -> str:
 
     svg.append("</svg>")
     return "\n".join(svg)
+
+
+# ── Styled Mermaid fallback (works with current frontend without SVG support) ──
+
+def generate_styled_mermaid(architecture: dict[str, Any]) -> str:
+    """Generate a color-coded Mermaid LR diagram from architecture JSON.
+
+    Overrides Gemini's raw mermaid output with a deterministic, well-labelled
+    diagram using AWS brand colors via classDef — works with the existing dark
+    Mermaid theme in the Stackport frontend without any frontend changes.
+    """
+    modules = sorted(
+        architecture.get("modules", []),
+        key=lambda m: m.get("deploy_order", 99),
+    )
+
+    lines = [
+        "graph LR",
+        "  classDef networking fill:#8C4FFF,stroke:#7040CC,color:#fff",
+        "  classDef compute    fill:#FF9900,stroke:#CC7A00,color:#fff",
+        "  classDef data       fill:#3F8624,stroke:#2E6418,color:#fff",
+        "  classDef storage    fill:#3F8624,stroke:#2E6418,color:#fff",
+        "  classDef security   fill:#DD344C,stroke:#AA2238,color:#fff",
+        "  classDef monitoring fill:#E7157B,stroke:#B50F60,color:#fff",
+        "  classDef observability fill:#E7157B,stroke:#B50F60,color:#fff",
+        "  classDef cicd       fill:#C7131F,stroke:#960F18,color:#fff",
+        "  classDef platform   fill:#232F3E,stroke:#1A2533,color:#fff",
+    ]
+
+    _cls_map = {
+        "networking": "networking", "compute": "compute",
+        "data": "data", "storage": "storage",
+        "security": "security", "monitoring": "monitoring",
+        "observability": "observability", "cicd": "cicd",
+    }
+
+    # Build node list
+    node_ids: dict[str, str] = {}
+    for i, mod in enumerate(modules):
+        nid = f"N{i}"
+        node_ids[mod.get("module", "")] = nid
+        label = _svc_label(mod.get("module", ""))
+        cat = (mod.get("module", "").split("/")[0] if "/" in mod.get("module", "") else "platform").lower()
+        cls = _cls_map.get(cat, "platform")
+        lines.append(f"  {nid}[{label}]:::{cls}")
+
+    # Draw edges by zone flow: edge → compute → data; platform dotted to compute
+    zones: dict[str, list[dict]] = {"edge": [], "compute": [], "data": [], "platform": []}
+    for mod in modules:
+        zones[_zone_for(mod.get("module", ""))].append(mod)
+
+    def _nid(mod: dict) -> str | None:
+        return node_ids.get(mod.get("module", ""))
+
+    # Sequential within edge
+    edge = zones["edge"]
+    for i in range(len(edge) - 1):
+        a, b = _nid(edge[i]), _nid(edge[i + 1])
+        if a and b:
+            lines.append(f"  {a} --> {b}")
+
+    # Edge → Compute (last edge → first compute)
+    if edge and zones["compute"]:
+        a = _nid(edge[-1])
+        for cm in zones["compute"][:2]:
+            b = _nid(cm)
+            if a and b:
+                lines.append(f"  {a} --> {b}")
+
+    # Compute → Data
+    for cm in zones["compute"][:2]:
+        for dm in zones["data"][:3]:
+            a, b = _nid(cm), _nid(dm)
+            if a and b:
+                lines.append(f"  {a} --> {b}")
+
+    # Platform → Compute (dotted — observability/security watching compute)
+    for pm in zones["platform"][:3]:
+        for cm in zones["compute"][:1]:
+            a, b = _nid(pm), _nid(cm)
+            if a and b:
+                lines.append(f"  {a} -.-> {b}")
+
+    return "\n".join(lines)
