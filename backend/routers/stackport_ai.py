@@ -91,7 +91,7 @@ Return ONLY valid JSON matching this exact schema (no markdown fences, no explan
     "note": "main cost driver sentence",
     "breakdown": ["Service $X/mo", "..."]
   },
-  "mermaid": "graph TD\\n  VPC[VPC] --> EKS[EKS]\\n  ..."
+  "mermaid": "...see mermaid rules below..."
 }
 
 Rules:
@@ -99,8 +99,30 @@ Rules:
 - Always add security/kms when data services (rds, s3, elasticache) are present
 - Always add monitoring/cloudwatch
 - Add cicd/ecr when compute/eks or compute/ecs is used
-- mermaid: 5-10 nodes, show key connections only
-- inputs: realistic defaults for the requested environment"""
+- inputs: realistic defaults for the requested environment
+
+MERMAID RULES — this is shown to directors, make it architecturally correct and visually professional:
+- Use "graph LR" (left-to-right flow)
+- Start with classDef blocks for AWS brand colors:
+    classDef networking fill:#8C4FFF,stroke:#7040CC,color:#fff
+    classDef compute fill:#FF9900,stroke:#CC7A00,color:#fff
+    classDef data fill:#3F8624,stroke:#2E6418,color:#fff
+    classDef security fill:#DD344C,stroke:#AA2238,color:#fff
+    classDef monitoring fill:#E7157B,stroke:#B50F60,color:#fff
+    classDef cicd fill:#C7131F,stroke:#960F18,color:#fff
+- Tag every node with :::networking, :::compute, :::data, :::security, :::monitoring, or :::cicd
+- Show CORRECT AWS data flows — examples of right vs wrong:
+    RIGHT: ECR -->|image pull| EKS   (EKS pulls container images from ECR)
+    WRONG: ECR -.-> EKS
+    RIGHT: EKS -->|writes| RDS       (app writes to database)
+    RIGHT: KMS -->|encrypts| RDS     (KMS key used by RDS for encryption at rest)
+    RIGHT: CloudWatch -.->|monitors| EKS   (CloudWatch observes, dotted line)
+    RIGHT: IAM -.->|authz| EKS       (IAM controls permissions, dotted)
+    RIGHT: User([User]) --> CF[CloudFront]:::networking  (user traffic entry point)
+- Use short human-readable node labels (not module paths)
+- 6-12 nodes maximum, show only meaningful connections
+- Edge labels in |pipes| explain the relationship
+- Double-check every arrow makes AWS architectural sense before including it"""
 
 
 async def _generate_architecture_stream(requirements: str, app_name: str, team_name: str, env: str):
@@ -149,13 +171,13 @@ async def _generate_architecture_stream(requirements: str, app_name: str, team_n
         raw = raw.strip()
 
         architecture = json.loads(raw)
-        # Generate AWS-style SVG + override Gemini's mermaid with a clean colored version
+        # Attach AWS-style SVG diagram (frontend uses this when available;
+        # falls back to Gemini's mermaid which now carries classDef colors)
         try:
-            from backend.routers.aws_diagram import generate_aws_svg, generate_styled_mermaid
+            from backend.routers.aws_diagram import generate_aws_svg
             architecture["svg_diagram"] = generate_aws_svg(architecture)
-            architecture["mermaid"] = generate_styled_mermaid(architecture)
         except Exception as _svg_err:
-            logger.warning("Diagram generation failed (non-fatal): %s", _svg_err)
+            logger.warning("SVG generation failed (non-fatal): %s", _svg_err)
 
         yield _sse({"type": "status", "message": "Architecture designed — rendering…"})
         await asyncio.sleep(0)
@@ -230,11 +252,10 @@ async def sp_architect_update(request: Request):
             raw = raw.rsplit("```", 1)[0]
         updated = json.loads(raw.strip())
         try:
-            from backend.routers.aws_diagram import generate_aws_svg, generate_styled_mermaid
+            from backend.routers.aws_diagram import generate_aws_svg
             updated["svg_diagram"] = generate_aws_svg(updated)
-            updated["mermaid"] = generate_styled_mermaid(updated)
         except Exception as _svg_err:
-            logger.warning("Diagram generation failed (non-fatal): %s", _svg_err)
+            logger.warning("SVG generation failed (non-fatal): %s", _svg_err)
         return JSONResponse(updated)
     except Exception as exc:
         logger.exception("Gemini architect update failed")
