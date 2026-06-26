@@ -1,147 +1,135 @@
-"""AWS-architecture-style SVG diagram generator for Stackport AI.
+"""AWS-style SVG diagram renderer for Stackport AI.
 
-Produces diagrams matching the official AWS architecture diagram visual language:
-- White background with orange dashed "AWS Cloud" boundary
-- Colored icon boxes with white service-specific SVG icons inside
-- Account/VPC boundary dashed groups
-- Dark numbered circles on flow arrows
-- Labels below each service box
+Two entry points:
+  generate_aws_svg(architecture)  — primary: uses architecture["diagram"] (structured JSON
+                                    that Gemini fills in) to produce a proper AWS-level diagram
+                                    with VPC boundary boxes, service icons, numbered arrows.
+  generate_styled_mermaid(arch)   — fallback string kept for compatibility.
 """
 from __future__ import annotations
 from typing import Any
 
-# ── AWS brand colors per service category ─────────────────────────────────────
-_CAT_COLORS: dict[str, str] = {
-    "networking":    "#8C4FFF",   # purple  (CloudFront, Route53, ALB)
-    "compute":       "#FF9900",   # AWS orange (Lambda, ECS, EKS)
-    "data":          "#3F8624",   # green   (RDS, DynamoDB, Aurora)
-    "storage":       "#3F8624",   # green   (S3)
-    "security":      "#DD344C",   # red     (IAM, WAF, Secrets Mgr, Cognito)
-    "cicd":          "#C7131F",   # dark red (ECR, CodePipeline)
-    "monitoring":    "#E7157B",   # magenta (CloudWatch)
-    "observability": "#E7157B",
-    "default":       "#527FFF",
-}
-
-# Specific service key → color overrides
-_SVC_COLORS: dict[str, str] = {
-    "appsync":        "#E7157B",
-    "cognito":        "#DD344C",
-    "api-gateway":    "#8C4FFF",
-    "step-functions": "#FF4F8B",
-    "kinesis":        "#8C4FFF",
-    "sns":            "#FF9900",
-    "sqs":            "#FF9900",
-    "elasticache":    "#3F8624",
-    "waf":            "#DD344C",
-    "kms":            "#DD344C",
-    "secrets-manager":"#DD344C",
-    "secrets":        "#DD344C",
-    "cloudwatch":     "#E7157B",
+# ── AWS brand colors ──────────────────────────────────────────────────────────
+_SERVICE_COLORS: dict[str, str] = {
+    # networking
+    "cloudfront": "#8C4FFF", "route53": "#8C4FFF", "alb": "#8C4FFF",
+    "nlb": "#8C4FFF", "waf": "#DD344C", "api-gateway": "#8C4FFF",
+    # compute
+    "lambda": "#FF9900", "ecs": "#FF9900", "eks": "#FF9900",
+    "ec2": "#FF9900", "fargate": "#FF9900", "appsync": "#E7157B",
+    "cognito": "#DD344C", "step-functions": "#FF4F8B",
+    # data
+    "rds": "#3F8624", "aurora": "#3F8624", "dynamodb": "#3F8624",
+    "elasticache": "#3F8624", "s3": "#3F8624", "sqs": "#FF9900",
+    "sns": "#FF9900", "kinesis": "#8C4FFF",
+    # security/platform
+    "iam": "#DD344C", "kms": "#DD344C", "secrets-manager": "#DD344C",
+    "secrets": "#DD344C", "cloudwatch": "#E7157B", "xray": "#E7157B",
+    "ecr": "#C7131F", "codepipeline": "#C7131F",
     "github-actions": "#333333",
-    "codepipeline":   "#232F3E",
-    "ecr":            "#FF9900",
 }
 
-# Short display labels
+_CAT_COLORS: dict[str, str] = {
+    "networking": "#8C4FFF", "compute": "#FF9900", "data": "#3F8624",
+    "storage": "#3F8624", "security": "#DD344C", "cicd": "#C7131F",
+    "monitoring": "#E7157B", "observability": "#E7157B",
+}
+
 _LABELS: dict[str, str] = {
     "cloudfront": "CloudFront", "route53": "Route 53", "alb": "App LB",
-    "nlb": "Net LB", "waf": "WAF", "vpc": "VPC",
+    "nlb": "Net LB", "waf": "WAF", "vpc": "VPC", "api-gateway": "API Gateway",
     "lambda": "Lambda", "ecs": "ECS", "eks": "EKS", "ec2": "EC2",
-    "fargate": "Fargate", "api-gateway": "API Gateway", "appsync": "AppSync",
-    "cognito": "Cognito", "step-functions": "Step Func",
-    "rds": "RDS", "aurora": "Aurora", "dynamodb": "DynamoDB",
-    "elasticache": "ElastiCache", "s3": "S3", "sqs": "SQS", "sns": "SNS",
-    "kinesis": "Kinesis", "iam": "IAM", "secrets-manager": "Secrets Mgr",
-    "secrets": "Secrets Mgr", "kms": "KMS", "cloudwatch": "CloudWatch",
-    "xray": "X-Ray", "codepipeline": "CodePipeline", "ecr": "ECR",
+    "fargate": "Fargate", "appsync": "AppSync", "cognito": "Cognito",
+    "step-functions": "Step Func", "rds": "RDS", "aurora": "Aurora",
+    "dynamodb": "DynamoDB", "elasticache": "ElastiCache", "s3": "S3",
+    "sqs": "SQS", "sns": "SNS", "kinesis": "Kinesis",
+    "iam": "IAM", "secrets-manager": "Secrets Mgr", "secrets": "Secrets Mgr",
+    "kms": "KMS", "cloudwatch": "CloudWatch", "xray": "X-Ray",
+    "codepipeline": "CodePipeline", "ecr": "ECR",
     "github-actions": "GitHub CI",
 }
 
-# SVG icon path definitions — each centered at (0,0), fit inside ±20 viewport
+# ── SVG icon paths (centered at 0,0, ±20 viewport) ───────────────────────────
 _ICONS: dict[str, str] = {
-    "lambda": '<text x="0" y="12" text-anchor="middle" font-size="30" font-weight="900" fill="white" font-family="Georgia,serif">λ</text>',
-
+    "lambda": '<text x="0" y="12" text-anchor="middle" font-size="28" font-weight="900" fill="white" font-family="Georgia,serif">λ</text>',
     "rds": (
-        '<ellipse cx="0" cy="-14" rx="15" ry="6" fill="white" opacity="0.9"/>'
-        '<rect x="-15" y="-14" width="30" height="26" fill="white" opacity="0.25"/>'
-        '<ellipse cx="0" cy="12" rx="15" ry="6" fill="white" opacity="0.5"/>'
-        '<line x1="-15" y1="-14" x2="-15" y2="12" stroke="white" stroke-width="1.5"/>'
-        '<line x1="15" y1="-14" x2="15" y2="12" stroke="white" stroke-width="1.5"/>'
+        '<ellipse cx="0" cy="-13" rx="14" ry="5" fill="white" opacity="0.9"/>'
+        '<rect x="-14" y="-13" width="28" height="24" fill="white" opacity="0.2"/>'
+        '<ellipse cx="0" cy="11" rx="14" ry="5" fill="white" opacity="0.5"/>'
+        '<line x1="-14" y1="-13" x2="-14" y2="11" stroke="white" stroke-width="1.5"/>'
+        '<line x1="14" y1="-13" x2="14" y2="11" stroke="white" stroke-width="1.5"/>'
     ),
-
     "aurora": (
-        '<ellipse cx="0" cy="-14" rx="15" ry="6" fill="white" opacity="0.9"/>'
-        '<rect x="-15" y="-14" width="30" height="26" fill="white" opacity="0.25"/>'
-        '<ellipse cx="0" cy="12" rx="15" ry="6" fill="white" opacity="0.5"/>'
-        '<line x1="-15" y1="-14" x2="-15" y2="12" stroke="white" stroke-width="1.5"/>'
-        '<line x1="15" y1="-14" x2="15" y2="12" stroke="white" stroke-width="1.5"/>'
+        '<ellipse cx="0" cy="-13" rx="14" ry="5" fill="white" opacity="0.9"/>'
+        '<rect x="-14" y="-13" width="28" height="24" fill="white" opacity="0.2"/>'
+        '<ellipse cx="0" cy="11" rx="14" ry="5" fill="white" opacity="0.5"/>'
+        '<line x1="-14" y1="-13" x2="-14" y2="11" stroke="white" stroke-width="1.5"/>'
+        '<line x1="14" y1="-13" x2="14" y2="11" stroke="white" stroke-width="1.5"/>'
     ),
-
     "dynamodb": (
-        '<ellipse cx="0" cy="-15" rx="13" ry="5" fill="white" opacity="0.9"/>'
+        '<ellipse cx="0" cy="-14" rx="13" ry="5" fill="white" opacity="0.9"/>'
         '<ellipse cx="0" cy="-3"  rx="13" ry="5" fill="white" opacity="0.7"/>'
-        '<ellipse cx="0" cy="9"   rx="13" ry="5" fill="white" opacity="0.5"/>'
-        '<line x1="-13" y1="-15" x2="-13" y2="9" stroke="white" stroke-width="1.5"/>'
-        '<line x1="13"  y1="-15" x2="13"  y2="9" stroke="white" stroke-width="1.5"/>'
+        '<ellipse cx="0" cy="8"   rx="13" ry="5" fill="white" opacity="0.5"/>'
+        '<line x1="-13" y1="-14" x2="-13" y2="8" stroke="white" stroke-width="1.5"/>'
+        '<line x1="13"  y1="-14" x2="13"  y2="8" stroke="white" stroke-width="1.5"/>'
     ),
-
     "elasticache": (
-        '<ellipse cx="0" cy="-12" rx="14" ry="5" fill="white" opacity="0.9"/>'
-        '<ellipse cx="0" cy="6"   rx="14" ry="5" fill="white" opacity="0.6"/>'
-        '<line x1="-14" y1="-12" x2="-14" y2="6" stroke="white" stroke-width="1.5"/>'
-        '<line x1="14"  y1="-12" x2="14"  y2="6" stroke="white" stroke-width="1.5"/>'
-        '<text x="0" y="-8" text-anchor="middle" font-size="8" fill="white" opacity="0.95">Redis</text>'
+        '<ellipse cx="0" cy="-11" rx="13" ry="5" fill="white" opacity="0.9"/>'
+        '<ellipse cx="0" cy="5"   rx="13" ry="5" fill="white" opacity="0.6"/>'
+        '<line x1="-13" y1="-11" x2="-13" y2="5" stroke="white" stroke-width="1.5"/>'
+        '<line x1="13"  y1="-11" x2="13"  y2="5" stroke="white" stroke-width="1.5"/>'
+        '<text x="0" y="-7" text-anchor="middle" font-size="8" fill="white">Redis</text>'
     ),
-
     "s3": (
-        '<path d="M0,-20 L13,-9 L13,11 Q13,20 0,20 Q-13,20 -13,11 L-13,-9 Z" '
-        'fill="white" opacity="0.3" stroke="white" stroke-width="1.5"/>'
-        '<ellipse cx="0" cy="-20" rx="13" ry="5" fill="white" opacity="0.85"/>'
-        '<line x1="-13" y1="-9" x2="13" y2="-9" stroke="white" stroke-width="1.5" opacity="0.7"/>'
+        '<path d="M0,-19 L13,-8 L13,11 Q13,19 0,19 Q-13,19 -13,11 L-13,-8 Z" fill="white" opacity="0.25" stroke="white" stroke-width="1.5"/>'
+        '<ellipse cx="0" cy="-19" rx="13" ry="5" fill="white" opacity="0.85"/>'
+        '<line x1="-13" y1="-8" x2="13" y2="-8" stroke="white" stroke-width="1.5" opacity="0.7"/>'
     ),
-
     "cloudfront": (
         '<circle cx="0" cy="0" r="17" fill="none" stroke="white" stroke-width="1.8"/>'
         '<ellipse cx="0" cy="0" rx="7" ry="17" fill="none" stroke="white" stroke-width="1.5"/>'
         '<line x1="-17" y1="0" x2="17" y2="0" stroke="white" stroke-width="1.5"/>'
-        '<line x1="-14" y1="-10" x2="14" y2="-10" stroke="white" stroke-width="1" opacity="0.7"/>'
-        '<line x1="-14" y1="10" x2="14" y2="10" stroke="white" stroke-width="1" opacity="0.7"/>'
+        '<line x1="-14" y1="-10" x2="14" y2="-10" stroke="white" stroke-width="1" opacity="0.6"/>'
+        '<line x1="-14" y1="10" x2="14" y2="10" stroke="white" stroke-width="1" opacity="0.6"/>'
     ),
-
     "route53": (
         '<circle cx="0" cy="0" r="17" fill="none" stroke="white" stroke-width="1.8"/>'
         '<ellipse cx="0" cy="0" rx="7" ry="17" fill="none" stroke="white" stroke-width="1.5"/>'
         '<line x1="-17" y1="0" x2="17" y2="0" stroke="white" stroke-width="1.5"/>'
     ),
-
     "alb": (
-        '<circle cx="-14" cy="-12" r="3" fill="white" opacity="0.85"/>'
-        '<circle cx="0"   cy="-12" r="3" fill="white" opacity="0.85"/>'
-        '<circle cx="14"  cy="-12" r="3" fill="white" opacity="0.85"/>'
-        '<line x1="-14" y1="-9" x2="-14" y2="10" stroke="white" stroke-width="1.5"/>'
-        '<line x1="0"   y1="-9" x2="0"   y2="10" stroke="white" stroke-width="1.5"/>'
-        '<line x1="14"  y1="-9" x2="14"  y2="10" stroke="white" stroke-width="1.5"/>'
-        '<line x1="-17" y1="-12" x2="17" y2="-12" stroke="white" stroke-width="2"/>'
+        '<circle cx="-14" cy="-11" r="3" fill="white" opacity="0.85"/>'
+        '<circle cx="0"   cy="-11" r="3" fill="white" opacity="0.85"/>'
+        '<circle cx="14"  cy="-11" r="3" fill="white" opacity="0.85"/>'
+        '<line x1="-17" y1="-11" x2="17" y2="-11" stroke="white" stroke-width="2"/>'
+        '<line x1="-14" y1="-8" x2="-14" y2="11" stroke="white" stroke-width="1.5"/>'
+        '<line x1="0"   y1="-8" x2="0"   y2="11" stroke="white" stroke-width="1.5"/>'
+        '<line x1="14"  y1="-8" x2="14"  y2="11" stroke="white" stroke-width="1.5"/>'
         '<circle cx="-14" cy="13" r="3" fill="white" opacity="0.6"/>'
         '<circle cx="0"   cy="13" r="3" fill="white" opacity="0.6"/>'
         '<circle cx="14"  cy="13" r="3" fill="white" opacity="0.6"/>'
     ),
-
+    "nlb": (
+        '<circle cx="-14" cy="-11" r="3" fill="white" opacity="0.85"/>'
+        '<circle cx="0"   cy="-11" r="3" fill="white" opacity="0.85"/>'
+        '<circle cx="14"  cy="-11" r="3" fill="white" opacity="0.85"/>'
+        '<line x1="-17" y1="-11" x2="17" y2="-11" stroke="white" stroke-width="2"/>'
+        '<line x1="-14" y1="-8" x2="-14" y2="11" stroke="white" stroke-width="1.5"/>'
+        '<line x1="0"   y1="-8" x2="0"   y2="11" stroke="white" stroke-width="1.5"/>'
+        '<line x1="14"  y1="-8" x2="14"  y2="11" stroke="white" stroke-width="1.5"/>'
+    ),
     "ecs": (
-        '<rect x="-18" y="-14" width="14" height="11" rx="2" fill="white" opacity="0.85"/>'
-        '<rect x="4"   y="-14" width="14" height="11" rx="2" fill="white" opacity="0.85"/>'
-        '<rect x="-18" y="3"   width="14" height="11" rx="2" fill="white" opacity="0.65"/>'
-        '<rect x="4"   y="3"   width="14" height="11" rx="2" fill="white" opacity="0.65"/>'
+        '<rect x="-17" y="-13" width="13" height="10" rx="2" fill="white" opacity="0.85"/>'
+        '<rect x="4"   y="-13" width="13" height="10" rx="2" fill="white" opacity="0.85"/>'
+        '<rect x="-17" y="3"   width="13" height="10" rx="2" fill="white" opacity="0.65"/>'
+        '<rect x="4"   y="3"   width="13" height="10" rx="2" fill="white" opacity="0.65"/>'
     ),
-
     "fargate": (
-        '<rect x="-18" y="-14" width="14" height="11" rx="2" fill="white" opacity="0.85"/>'
-        '<rect x="4"   y="-14" width="14" height="11" rx="2" fill="white" opacity="0.85"/>'
-        '<rect x="-18" y="3"   width="14" height="11" rx="2" fill="white" opacity="0.65"/>'
-        '<rect x="4"   y="3"   width="14" height="11" rx="2" fill="white" opacity="0.65"/>'
+        '<rect x="-17" y="-13" width="13" height="10" rx="2" fill="white" opacity="0.85"/>'
+        '<rect x="4"   y="-13" width="13" height="10" rx="2" fill="white" opacity="0.85"/>'
+        '<rect x="-17" y="3"   width="13" height="10" rx="2" fill="white" opacity="0.65"/>'
+        '<rect x="4"   y="3"   width="13" height="10" rx="2" fill="white" opacity="0.65"/>'
     ),
-
     "eks": (
         '<circle cx="0" cy="0" r="16" fill="none" stroke="white" stroke-width="2"/>'
         '<line x1="0" y1="-16" x2="0" y2="-8" stroke="white" stroke-width="2"/>'
@@ -149,66 +137,55 @@ _ICONS: dict[str, str] = {
         '<line x1="-13.8" y1="8" x2="-6.9" y2="4" stroke="white" stroke-width="2"/>'
         '<circle cx="0" cy="0" r="5" fill="white" opacity="0.85"/>'
     ),
-
     "ec2": (
         '<rect x="-16" y="-16" width="32" height="32" rx="3" fill="none" stroke="white" stroke-width="2"/>'
         '<rect x="-8"  y="-8"  width="16" height="16" rx="2" fill="white" opacity="0.7"/>'
     ),
-
     "cognito": (
         '<circle cx="0" cy="-10" r="8" fill="white" opacity="0.85"/>'
-        '<path d="M-15,18 Q-15,2 0,2 Q15,2 15,18" fill="white" opacity="0.6"/>'
+        '<path d="M-14,18 Q-14,2 0,2 Q14,2 14,18" fill="white" opacity="0.6"/>'
     ),
-
     "iam": (
         '<rect x="-13" y="2" width="26" height="17" rx="3" fill="none" stroke="white" stroke-width="2"/>'
         '<path d="M-8,2 L-8,-7 Q-8,-18 0,-18 Q8,-18 8,-7 L8,2" fill="none" stroke="white" stroke-width="2"/>'
         '<circle cx="0" cy="11" r="3.5" fill="white" opacity="0.9"/>'
     ),
-
     "kms": (
         '<circle cx="0" cy="-8" r="9" fill="none" stroke="white" stroke-width="2"/>'
         '<rect x="-4" y="-2" width="8" height="14" rx="2" fill="none" stroke="white" stroke-width="2"/>'
         '<rect x="-9" y="8" width="5" height="4" rx="1" fill="white" opacity="0.8"/>'
         '<rect x="4"  y="8" width="5" height="4" rx="1" fill="white" opacity="0.8"/>'
     ),
-
     "secrets-manager": (
         '<rect x="-13" y="2" width="26" height="17" rx="3" fill="none" stroke="white" stroke-width="2"/>'
         '<path d="M-8,2 L-8,-7 Q-8,-18 0,-18 Q8,-18 8,-7 L8,2" fill="none" stroke="white" stroke-width="2"/>'
         '<line x1="-6" y1="10" x2="6" y2="10" stroke="white" stroke-width="1.5"/>'
         '<line x1="-6" y1="14" x2="6" y2="14" stroke="white" stroke-width="1.5"/>'
     ),
-
     "waf": (
-        '<path d="M0,-20 L17,-10 L17,7 Q17,20 0,20 Q-17,20 -17,7 L-17,-10 Z" '
-        'fill="none" stroke="white" stroke-width="2"/>'
+        '<path d="M0,-20 L17,-10 L17,7 Q17,20 0,20 Q-17,20 -17,7 L-17,-10 Z" fill="none" stroke="white" stroke-width="2"/>'
         '<line x1="-8" y1="0" x2="8" y2="0" stroke="white" stroke-width="2.5"/>'
         '<line x1="0" y1="-8" x2="0" y2="8" stroke="white" stroke-width="2.5"/>'
     ),
-
     "cloudwatch": (
         '<circle cx="0" cy="0" r="17" fill="none" stroke="white" stroke-width="1.8"/>'
         '<polyline points="-11,8 -5,-8 1,3 7,-10 12,5" fill="none" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>'
     ),
-
     "appsync": (
         '<polygon points="0,-18 16,9 -16,9" fill="none" stroke="white" stroke-width="2.5"/>'
         '<circle cx="0"   cy="-18" r="4" fill="white" opacity="0.85"/>'
         '<circle cx="16"  cy="9"   r="4" fill="white" opacity="0.85"/>'
         '<circle cx="-16" cy="9"   r="4" fill="white" opacity="0.85"/>'
     ),
-
     "api-gateway": (
         '<rect x="-17" y="-17" width="34" height="34" rx="4" fill="none" stroke="white" stroke-width="1.8"/>'
-        '<line x1="-9" y1="-8" x2="9"  y2="-8" stroke="white" stroke-width="1.8"/>'
-        '<line x1="-9" y1="0"  x2="9"  y2="0"  stroke="white" stroke-width="1.8"/>'
-        '<line x1="-9" y1="8"  x2="9"  y2="8"  stroke="white" stroke-width="1.8"/>'
+        '<line x1="-9" y1="-8" x2="9" y2="-8" stroke="white" stroke-width="1.8"/>'
+        '<line x1="-9" y1="0"  x2="9" y2="0"  stroke="white" stroke-width="1.8"/>'
+        '<line x1="-9" y1="8"  x2="9" y2="8"  stroke="white" stroke-width="1.8"/>'
         '<circle cx="-13" cy="-8" r="2.5" fill="white" opacity="0.9"/>'
         '<circle cx="-13" cy="0"  r="2.5" fill="white" opacity="0.9"/>'
         '<circle cx="-13" cy="8"  r="2.5" fill="white" opacity="0.9"/>'
     ),
-
     "step-functions": (
         '<rect x="-13" y="-18" width="26" height="10" rx="2" fill="white" opacity="0.85"/>'
         '<rect x="-13" y="-4"  width="26" height="10" rx="2" fill="white" opacity="0.65"/>'
@@ -216,14 +193,26 @@ _ICONS: dict[str, str] = {
         '<line x1="0" y1="-8" x2="0" y2="-4" stroke="white" stroke-width="1.5"/>'
         '<line x1="0" y1="6"  x2="0" y2="10" stroke="white" stroke-width="1.5"/>'
     ),
-
     "ecr": (
         '<rect x="-16" y="-16" width="32" height="32" rx="3" fill="none" stroke="white" stroke-width="2"/>'
         '<rect x="-10" y="-11" width="20" height="7" rx="2" fill="white" opacity="0.85"/>'
         '<rect x="-10" y="-1"  width="20" height="7" rx="2" fill="white" opacity="0.6"/>'
         '<rect x="-10" y="9"   width="20" height="7" rx="2" fill="white" opacity="0.4"/>'
     ),
-
+    "sqs": (
+        '<rect x="-18" y="-8" width="36" height="16" rx="8" fill="none" stroke="white" stroke-width="2"/>'
+        '<circle cx="-9" cy="0" r="3" fill="white" opacity="0.9"/>'
+        '<circle cx="0"  cy="0" r="3" fill="white" opacity="0.9"/>'
+        '<circle cx="9"  cy="0" r="3" fill="white" opacity="0.9"/>'
+    ),
+    "sns": (
+        '<path d="M-12,-17 L12,-17 L17,-8 L12,3 L4,3 L0,17 L-4,3 L-12,3 L-17,-8 Z" fill="white" opacity="0.7" stroke="white" stroke-width="1.5"/>'
+    ),
+    "kinesis": (
+        '<path d="M-17,-10 Q-7,-4 0,-10 Q7,-16 17,-10" fill="none" stroke="white" stroke-width="2"/>'
+        '<path d="M-17,0  Q-7,6  0,0  Q7,-6  17,0"  fill="none" stroke="white" stroke-width="2"/>'
+        '<path d="M-17,10 Q-7,16 0,10 Q7,4  17,10"  fill="none" stroke="white" stroke-width="2"/>'
+    ),
     "codepipeline": (
         '<rect x="-16" y="-14" width="12" height="9" rx="2" fill="white" opacity="0.85"/>'
         '<rect x="4"   y="-14" width="12" height="9" rx="2" fill="white" opacity="0.65"/>'
@@ -233,468 +222,387 @@ _ICONS: dict[str, str] = {
         '<line x1="0"  y1="-5"  x2="-12" y2="5" stroke="white" stroke-width="1.5"/>'
         '<line x1="0"  y1="-5"  x2="12"  y2="5" stroke="white" stroke-width="1.5"/>'
     ),
-
-    "sqs": (
-        '<rect x="-18" y="-8" width="36" height="16" rx="8" fill="none" stroke="white" stroke-width="2"/>'
-        '<circle cx="-9" cy="0" r="3" fill="white" opacity="0.9"/>'
-        '<circle cx="0"  cy="0" r="3" fill="white" opacity="0.9"/>'
-        '<circle cx="9"  cy="0" r="3" fill="white" opacity="0.9"/>'
-    ),
-
-    "sns": (
-        '<path d="M-12,-18 L12,-18 L18,-8 L12,2 L4,2 L0,18 L-4,2 L-12,2 L-18,-8 Z" '
-        'fill="white" opacity="0.7" stroke="white" stroke-width="1.5"/>'
-    ),
-
-    "kinesis": (
-        '<path d="M-17,-10 Q-7,-4 0,-10 Q7,-16 17,-10" fill="none" stroke="white" stroke-width="2"/>'
-        '<path d="M-17,0  Q-7,6  0,0  Q7,-6  17,0"  fill="none" stroke="white" stroke-width="2"/>'
-        '<path d="M-17,10 Q-7,16 0,10 Q7,4  17,10"  fill="none" stroke="white" stroke-width="2"/>'
-    ),
-
-    "vpc": (
-        '<path d="M-17,6 Q-19,-10 -7,-13 Q-4,-21 5,-21 Q15,-21 18,-13 Q24,-10 17,6 Z" '
-        'fill="none" stroke="white" stroke-width="2"/>'
-        '<line x1="-7" y1="17" x2="-17" y2="6" stroke="white" stroke-width="1.5"/>'
-        '<line x1="7"  y1="17" x2="17"  y2="6" stroke="white" stroke-width="1.5"/>'
-        '<line x1="-7" y1="17" x2="7"   y2="17" stroke="white" stroke-width="1.5"/>'
-    ),
-
     "github-actions": (
         '<circle cx="0" cy="0" r="17" fill="none" stroke="white" stroke-width="2"/>'
-        '<circle cx="0" cy="-4" r="6"  fill="none" stroke="white" stroke-width="2"/>'
+        '<circle cx="0" cy="-4" r="6" fill="none" stroke="white" stroke-width="2"/>'
         '<circle cx="-10" cy="12" r="3" fill="white" opacity="0.8"/>'
         '<circle cx="10"  cy="12" r="3" fill="white" opacity="0.8"/>'
     ),
-
-    "xray": (
-        '<line x1="-16" y1="0" x2="16" y2="0" stroke="white" stroke-width="2.5"/>'
-        '<line x1="-16" y1="0" x2="-6" y2="-14" stroke="white" stroke-width="1.5"/>'
-        '<line x1="-16" y1="0" x2="-6" y2="14"  stroke="white" stroke-width="1.5"/>'
-        '<line x1="16"  y1="0" x2="6"  y2="-14" stroke="white" stroke-width="1.5"/>'
-        '<line x1="16"  y1="0" x2="6"  y2="14"  stroke="white" stroke-width="1.5"/>'
-    ),
 }
-
-# Aliases
-_ICONS["secrets"] = _ICONS["secrets-manager"] = _ICONS.get("secrets-manager", _ICONS["iam"])
-_ICONS["nlb"] = _ICONS["alb"]
+_ICONS["secrets"] = _ICONS["secrets-manager"]
+_ICONS["vpc"] = _ICONS.get("vpc", "")
 
 
-def _svc_key(module: str) -> str:
-    return (module.split("/")[-1] if "/" in module else module).lower()
+def _svc_key(service: str) -> str:
+    return (service.split("/")[-1] if "/" in service else service).lower()
 
 
-def _svc_label(module: str) -> str:
-    key = _svc_key(module)
-    return _LABELS.get(key, key.replace("-", " ").title())
-
-
-def _svc_color(module: str) -> str:
-    key = _svc_key(module)
-    if key in _SVC_COLORS:
-        return _SVC_COLORS[key]
-    cat = (module.split("/")[0] if "/" in module else "default").lower()
-    return _CAT_COLORS.get(cat, _CAT_COLORS["default"])
-
-
-def _svc_icon(module: str) -> str:
-    key = _svc_key(module)
+def _icon_svg(service: str) -> str:
+    key = _svc_key(service)
     if key in _ICONS:
         return _ICONS[key]
-    # Generic: show 2-char abbreviation
     abbr = _LABELS.get(key, key.upper())[:3]
-    return (
-        f'<text x="0" y="8" text-anchor="middle" font-size="16" '
-        f'font-weight="800" fill="white" font-family="Inter,system-ui,sans-serif">{abbr}</text>'
-    )
+    return f'<text x="0" y="8" text-anchor="middle" font-size="15" font-weight="800" fill="white">{abbr}</text>'
 
 
-def _zone_for(module: str) -> str:
-    cat = (module.split("/")[0] if "/" in module else "").lower()
-    key = _svc_key(module)
-    _edge = {"cloudfront", "route53", "waf", "alb", "nlb", "vpc", "api-gateway"}
-    _compute = {"lambda", "ecs", "eks", "ec2", "fargate", "appsync",
-                "cognito", "step-functions"}
-    _data = {"rds", "aurora", "dynamodb", "elasticache", "s3",
-             "sqs", "sns", "kinesis"}
-    if key in _edge or cat == "networking":
-        return "edge"
-    if key in _compute or cat == "compute":
-        return "compute"
-    if key in _data or cat in ("data", "storage"):
-        return "data"
-    return "platform"
+def _node_color(service: str) -> str:
+    if service == "user":
+        return "#475569"
+    key = _svc_key(service)
+    if key in _SERVICE_COLORS:
+        return _SERVICE_COLORS[key]
+    cat = (service.split("/")[0] if "/" in service else "default").lower()
+    return _CAT_COLORS.get(cat, "#527FFF")
 
 
-# ── SVG builders ──────────────────────────────────────────────────────────────
+def _node_label(node: dict) -> str:
+    return node.get("label") or _LABELS.get(_svc_key(node.get("service", "")), _svc_key(node.get("service", "")).title())
 
-def _icon_box(cx: int, cy: int, size: int, module: str, order: int | None = None) -> str:
-    """Render one service icon box centered at (cx, cy)."""
-    r = 10
-    half = size // 2
-    color = _svc_color(module)
-    icon_svg = _svc_icon(module)
-    label = _svc_label(module)
 
-    # Split long labels to two lines
+# ── Zone visual config ────────────────────────────────────────────────────────
+_ZONE_STYLE: dict[str, dict] = {
+    "internet":    {"fill": "#f1f5f9", "stroke": "#94a3b8", "dash": "6,4",  "label_color": "#64748b"},
+    "aws_edge":    {"fill": "#faf5ff", "stroke": "#8C4FFF", "dash": "none", "label_color": "#6d28d9"},
+    "vpc_public":  {"fill": "#f0fdf4", "stroke": "#3DAA5C", "dash": "5,3",  "label_color": "#15803d"},
+    "vpc_private": {"fill": "#eff6ff", "stroke": "#3B82F6", "dash": "5,3",  "label_color": "#1d4ed8"},
+    "aws_managed": {"fill": "#fff7ed", "stroke": "#FF9900", "dash": "none", "label_color": "#c2410c"},
+}
+
+
+# ── Icon box renderer ─────────────────────────────────────────────────────────
+_BOX = 56   # icon box size
+
+def _icon_box(cx: int, cy: int, node: dict, order: int | None = None) -> str:
+    service = node.get("service", "")
+    label = _node_label(node)
+    color = _node_color(service)
+    icon = _icon_svg(service)
+    half = _BOX // 2
+    r = 9
+
+    # Two-line label split
     words = label.split()
-    if len(words) == 1 or len(label) <= 11:
-        lbl_lines = [f'<text x="{cx}" y="{cy + half + 16}" text-anchor="middle" '
-                     f'font-size="11" font-weight="600" fill="#1a2744">{label}</text>']
+    if len(label) <= 11 or len(words) == 1:
+        lbl_svg = (
+            f'<text x="{cx}" y="{cy + half + 15}" text-anchor="middle" '
+            f'font-size="10.5" font-weight="600" fill="#1e293b">{label}</text>'
+        )
     else:
-        mid = len(words) // 2
-        l1 = " ".join(words[:mid])
-        l2 = " ".join(words[mid:])
-        lbl_lines = [
+        mid = (len(words) + 1) // 2
+        l1, l2 = " ".join(words[:mid]), " ".join(words[mid:])
+        lbl_svg = (
             f'<text x="{cx}" y="{cy + half + 13}" text-anchor="middle" '
-            f'font-size="10.5" font-weight="600" fill="#1a2744">{l1}</text>',
-            f'<text x="{cx}" y="{cy + half + 25}" text-anchor="middle" '
-            f'font-size="10.5" font-weight="600" fill="#1a2744">{l2}</text>',
-        ]
+            f'font-size="10" font-weight="600" fill="#1e293b">{l1}</text>'
+            f'<text x="{cx}" y="{cy + half + 24}" text-anchor="middle" '
+            f'font-size="10" font-weight="600" fill="#1e293b">{l2}</text>'
+        )
 
     parts = [
-        # Drop shadow
-        f'<rect x="{cx - half + 2}" y="{cy - half + 2}" width="{size}" height="{size}" '
-        f'rx="{r}" fill="#00000018"/>',
-        # Icon square
-        f'<rect x="{cx - half}" y="{cy - half}" width="{size}" height="{size}" '
-        f'rx="{r}" fill="{color}"/>',
-        # White inner icon (transformed to icon box center)
-        f'<g transform="translate({cx},{cy})">{icon_svg}</g>',
-    ] + lbl_lines
+        f'<rect x="{cx-half+2}" y="{cy-half+2}" width="{_BOX}" height="{_BOX}" rx="{r}" fill="#00000015"/>',
+        f'<rect x="{cx-half}" y="{cy-half}" width="{_BOX}" height="{_BOX}" rx="{r}" fill="{color}"/>',
+        f'<g transform="translate({cx},{cy})">{icon}</g>',
+        lbl_svg,
+    ]
 
-    # Deploy-order badge
     if order is not None:
-        bx = cx + half - 1
-        by = cy - half + 1
+        bx, by = cx + half - 1, cy - half + 1
         parts += [
-            f'<circle cx="{bx}" cy="{by}" r="10" fill="#1a2744" stroke="{color}" stroke-width="1.5"/>',
-            f'<text x="{bx}" y="{by + 4}" text-anchor="middle" '
-            f'font-size="9" font-weight="700" fill="{color}">{order}</text>',
+            f'<circle cx="{bx}" cy="{by}" r="10" fill="white" stroke="{color}" stroke-width="2"/>',
+            f'<text x="{bx}" y="{by+4}" text-anchor="middle" font-size="9" font-weight="700" fill="{color}">{order}</text>',
+        ]
+
+    if service == "user":
+        parts = [
+            f'<circle cx="{cx}" cy="{cy-8}" r="11" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>',
+            f'<circle cx="{cx}" cy="{cy-8}" r="5" fill="#94a3b8"/>',
+            f'<path d="M{cx-12},{cy+7} Q{cx-12},{cy-1} {cx},{cy-1} Q{cx+12},{cy-1} {cx+12},{cy+7}" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>',
+            f'<text x="{cx}" y="{cy+22}" text-anchor="middle" font-size="10.5" font-weight="600" fill="#475569">Users</text>',
         ]
 
     return "\n".join(parts)
 
 
-def _flow_arrow(x1: int, y1: int, x2: int, y2: int, num: int, color: str = "#1a2744") -> str:
-    """Arrow with a numbered dark circle at midpoint."""
-    mx = (x1 + x2) // 2
-    my = (y1 + y2) // 2
-    return (
+# ── Arrow renderer ────────────────────────────────────────────────────────────
+
+def _arrow(x1: int, y1: int, x2: int, y2: int,
+           label: str = "", seq: int | None = None, dashed: bool = False) -> str:
+    stroke = "#475569" if dashed else "#1e293b"
+    dash_attr = 'stroke-dasharray="6,4"' if dashed else ""
+    mid_x, mid_y = (x1 + x2) // 2, (y1 + y2) // 2
+
+    parts = [
         f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
-        f'stroke="{color}" stroke-width="1.5" marker-end="url(#ah)"/>\n'
-        f'<circle cx="{mx}" cy="{my}" r="10" fill="{color}"/>\n'
-        f'<text x="{mx}" y="{my + 4}" text-anchor="middle" '
-        f'font-size="10" font-weight="700" fill="white">{num}</text>'
-    )
-
-
-def _user_icon(cx: int, cy: int) -> str:
-    return (
-        f'<circle cx="{cx}" cy="{cy - 9}" r="10" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>'
-        f'<circle cx="{cx}" cy="{cy - 9}" r="4" fill="#64748b"/>'
-        f'<path d="M{cx-10},{cy+5} Q{cx-10},{cy-2} {cx},{cy-2} Q{cx+10},{cy-2} {cx+10},{cy+5}" '
-        f'fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>'
-        f'<text x="{cx}" y="{cy + 20}" text-anchor="middle" font-size="10" '
-        f'font-weight="600" fill="#475569">Users</text>'
-    )
-
-
-# ── Main entry point ──────────────────────────────────────────────────────────
-
-def generate_aws_svg(architecture: dict[str, Any]) -> str:
-    """Return a professional AWS-architecture-style SVG string."""
-
-    modules = sorted(
-        architecture.get("modules", []),
-        key=lambda m: m.get("deploy_order", 99),
-    )
-    arch_name = architecture.get("architecture_name", "AWS Architecture")
-
-    # ── Zone assignment ───────────────────────────────────────────────────────
-    zones: dict[str, list[dict]] = {
-        "edge": [], "compute": [], "data": [], "platform": []
-    }
-    for mod in modules:
-        zones[_zone_for(mod.get("module", ""))].append(mod)
-
-    # ── Canvas ────────────────────────────────────────────────────────────────
-    W, H = 1200, 680
-    PAD = 28
-    BOX = 60           # icon box size
-    BOX_GAP_V = 32     # vertical gap between boxes in a column
-    COL_INNER = 24     # padding inside zone columns
-
-    # Three main columns
-    COL_COUNT = 3
-    COL_GAP = 18
-    col_w = (W - PAD * 2 - 60 - COL_GAP * (COL_COUNT - 1)) // COL_COUNT  # 60 = user space on left
-    LEFT_OFFSET = 60  # space for user icon
-
-    col_x = [
-        PAD + LEFT_OFFSET,
-        PAD + LEFT_OFFSET + col_w + COL_GAP,
-        PAD + LEFT_OFFSET + (col_w + COL_GAP) * 2,
+        f'stroke="{stroke}" stroke-width="1.8" {dash_attr} marker-end="url(#ah)"/>'
     ]
 
-    # Max items per column → column height
-    max_items = max(
-        max(len(zones[z]) for z in ("edge", "compute", "data")), 1
-    )
-    MAIN_TOP = 90
-    col_h = max_items * (BOX + BOX_GAP_V) + COL_INNER * 2
-    MAIN_H = col_h
+    if seq is not None:
+        parts += [
+            f'<circle cx="{mid_x}" cy="{mid_y}" r="11" fill="{stroke}"/>',
+            f'<text x="{mid_x}" y="{mid_y+4}" text-anchor="middle" font-size="10" font-weight="700" fill="white">{seq}</text>',
+        ]
+    elif label:
+        parts += [
+            f'<rect x="{mid_x-20}" y="{mid_y-9}" width="40" height="16" rx="4" fill="white" stroke="#e2e8f0" stroke-width="1"/>',
+            f'<text x="{mid_x}" y="{mid_y+4}" text-anchor="middle" font-size="9" fill="{stroke}">{label}</text>',
+        ]
 
-    PLAT_TOP = MAIN_TOP + MAIN_H + 22
-    PLAT_H = 100
+    return "\n".join(parts)
 
-    TOTAL_H = PLAT_TOP + PLAT_H + PAD
-    # Adjust SVG height dynamically
-    H = TOTAL_H
 
-    # ── Header ────────────────────────────────────────────────────────────────
+# ── Primary renderer: uses diagram JSON from Gemini ───────────────────────────
+
+def _render_from_diagram(diagram: dict, arch_name: str) -> str:
+    zones_raw: list[dict] = diagram.get("zones", [])
+    nodes_raw: list[dict] = diagram.get("nodes", [])
+    edges_raw: list[dict] = diagram.get("edges", [])
+
+    # Index nodes by id
+    node_map: dict[str, dict] = {n["id"]: n for n in nodes_raw}
+
+    # ── Layout ───────────────────────────────────────────────────────────────
+    PAD = 28
+    ZONE_PAD = 18       # padding inside zone box
+    BOX_GAP_H = 20      # horizontal gap between icon boxes in a zone
+    BOX_GAP_V = 26      # vertical gap between rows
+    ZONE_GAP = 16       # gap between zone columns
+    TOP = 72            # y start of zone boxes
+    LABEL_H = 22        # zone header height
+    MAX_PER_COL = 3     # max nodes per column within a zone
+
+    # Compute per-zone node sets
+    zone_nodes: dict[str, list[str]] = {z["id"]: z.get("nodes", []) for z in zones_raw}
+
+    # Compute zone widths based on node count
+    def _zone_width(node_ids: list[str]) -> int:
+        cols = (len(node_ids) + MAX_PER_COL - 1) // MAX_PER_COL if node_ids else 1
+        return ZONE_PAD * 2 + cols * _BOX + (cols - 1) * BOX_GAP_H
+
+    # Determine if VPC box needed
+    vpc_zone_types = {"vpc_public", "vpc_private"}
+    vpc_zones = [z for z in zones_raw if z.get("type") in vpc_zone_types]
+    has_vpc = bool(vpc_zones)
+
+    # Zone heights
+    def _zone_height(node_ids: list[str]) -> int:
+        rows = min(len(node_ids), MAX_PER_COL) if node_ids else 1
+        return LABEL_H + ZONE_PAD * 2 + rows * _BOX + (rows - 1) * BOX_GAP_V
+
+    max_zone_h = max((_zone_height(zone_nodes.get(z["id"], [])) for z in zones_raw), default=200)
+    max_zone_h = max(max_zone_h, 200)
+
+    # Assign x positions to zones
+    x = PAD
+    zone_x: dict[str, int] = {}
+    zone_w: dict[str, int] = {}
+    for z in zones_raw:
+        nids = zone_nodes.get(z["id"], [])
+        w = _zone_width(nids)
+        zone_x[z["id"]] = x
+        zone_w[z["id"]] = w
+        x += w + ZONE_GAP
+
+    W = x - ZONE_GAP + PAD
+    VPC_PAD = 12
+
+    # VPC bounding box
+    vpc_x1 = min((zone_x[z["id"]] for z in vpc_zones), default=0) - VPC_PAD
+    vpc_x2 = max((zone_x[z["id"]] + zone_w[z["id"]] for z in vpc_zones), default=W) + VPC_PAD
+
+    # Total canvas height
+    legend_h = 30
+    H = TOP + max_zone_h + (32 if has_vpc else 0) + legend_h + PAD
+
+    # ── Compute node center positions ─────────────────────────────────────────
+    node_cx: dict[str, int] = {}
+    node_cy: dict[str, int] = {}
+
+    for z in zones_raw:
+        zid = z["id"]
+        nids = zone_nodes.get(zid, [])
+        zx = zone_x[zid]
+        zw = zone_w[zid]
+        cols = (len(nids) + MAX_PER_COL - 1) // MAX_PER_COL if nids else 1
+
+        for i, nid in enumerate(nids):
+            col = i // MAX_PER_COL
+            row = i % MAX_PER_COL
+            cx = zx + ZONE_PAD + col * (_BOX + BOX_GAP_H) + _BOX // 2
+            cy = TOP + (32 if has_vpc else 0) + LABEL_H + ZONE_PAD + row * (_BOX + BOX_GAP_V) + _BOX // 2
+            node_cx[nid] = cx
+            node_cy[nid] = cy
+
+    # ── SVG ──────────────────────────────────────────────────────────────────
     svg: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
-        f'style="background:#f0f4f8;font-family:Inter,\'Segoe UI\',system-ui,sans-serif;">',
-
+        f'style="background:#f8fafc;font-family:Inter,\'Segoe UI\',system-ui,sans-serif;">',
         '<defs>'
         '<marker id="ah" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto">'
-        '<polygon points="0 0, 9 3.5, 0 7" fill="#1a2744"/>'
+        '<polygon points="0 0, 9 3.5, 0 7" fill="#1e293b"/>'
         '</marker>'
-        '<filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">'
-        '<feDropShadow dx="1" dy="2" stdDeviation="3" flood-color="#00000018"/>'
-        '</filter>'
         '</defs>',
-
-        # Background
-        f'<rect x="0" y="0" width="{W}" height="{H}" fill="#f0f4f8"/>',
-
-        # Title bar
-        f'<rect x="0" y="0" width="{W}" height="52" fill="#1a2744"/>',
-        f'<text x="{W // 2}" y="33" text-anchor="middle" font-size="17" '
-        f'font-weight="700" fill="white" letter-spacing="-0.3">{arch_name}</text>',
-        f'<text x="{W - PAD}" y="33" text-anchor="end" font-size="11" '
-        f'fill="#FF9900" font-weight="600">Generated by Stackport AI</text>',
+        f'<rect x="0" y="0" width="{W}" height="{H}" fill="#f8fafc"/>',
+        # Title
+        f'<rect x="0" y="0" width="{W}" height="50" fill="#1e293b"/>',
+        f'<text x="{W//2}" y="31" text-anchor="middle" font-size="16" font-weight="700" fill="white">{arch_name}</text>',
+        f'<text x="{W-PAD}" y="31" text-anchor="end" font-size="10" fill="#FF9900" font-weight="600">Stackport AI</text>',
+        # AWS Cloud outer border
+        f'<rect x="{PAD//2}" y="58" width="{W-PAD}" height="{H-66}" rx="8" '
+        f'fill="none" stroke="#FF9900" stroke-width="1.8" stroke-dasharray="10,5"/>',
+        f'<rect x="{PAD//2+2}" y="51" width="110" height="20" rx="4" fill="white" stroke="#FF9900" stroke-width="1.5"/>',
+        f'<rect x="{PAD//2+6}" y="55" width="16" height="12" rx="3" fill="#FF9900"/>',
+        f'<text x="{PAD//2+14}" y="64" text-anchor="middle" font-size="7.5" font-weight="900" fill="white">aws</text>',
+        f'<text x="{PAD//2+72}" y="65" text-anchor="middle" font-size="11" font-weight="700" fill="#232F3E">AWS Cloud</text>',
     ]
 
-    # ── AWS Cloud boundary ────────────────────────────────────────────────────
-    cloud_y = 62
-    cloud_h = H - cloud_y - 10
-    svg += [
-        # Main AWS Cloud box
-        f'<rect x="{PAD // 2}" y="{cloud_y}" width="{W - PAD}" height="{cloud_h}" rx="8" '
-        f'fill="white" stroke="#FF9900" stroke-width="2" stroke-dasharray="10,5"/>',
-
-        # AWS Cloud label chip
-        f'<rect x="{PAD // 2 + 2}" y="{cloud_y - 10}" width="108" height="22" rx="4" '
-        f'fill="white" stroke="#FF9900" stroke-width="1.5"/>',
-        # Mini AWS logo (orange square with "aws")
-        f'<rect x="{PAD // 2 + 6}" y="{cloud_y - 6}" width="16" height="14" rx="3" fill="#FF9900"/>',
-        f'<text x="{PAD // 2 + 14}" y="{cloud_y + 4}" text-anchor="middle" '
-        f'font-size="8" font-weight="900" fill="white">aws</text>',
-        f'<text x="{PAD // 2 + 70}" y="{cloud_y + 4}" text-anchor="middle" '
-        f'font-size="11" font-weight="700" fill="#232F3E">AWS Cloud</text>',
-    ]
-
-    # ── Zone column backgrounds & labels ──────────────────────────────────────
-    zone_defs = [
-        ("edge",    col_x[0], "Edge / Network"),
-        ("compute", col_x[1], "Compute / API"),
-        ("data",    col_x[2], "Data / Storage"),
-    ]
-
-    for zone_key, cx, zlabel in zone_defs:
+    # VPC bounding box
+    if has_vpc:
+        vpc_top = TOP + 28
+        vpc_bot = TOP + max_zone_h + 12
         svg += [
-            f'<rect x="{cx}" y="{MAIN_TOP}" width="{col_w}" height="{MAIN_H}" rx="8" '
-            f'fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>',
-            f'<text x="{cx + col_w // 2}" y="{MAIN_TOP + 18}" text-anchor="middle" '
-            f'font-size="10" font-weight="700" fill="#64748b" letter-spacing="1">'
-            f'{zlabel.upper()}</text>',
+            f'<rect x="{vpc_x1}" y="{vpc_top}" width="{vpc_x2-vpc_x1}" height="{vpc_bot-vpc_top}" rx="8" '
+            f'fill="#f0fdf4" stroke="#3DAA5C" stroke-width="1.8" stroke-dasharray="6,3"/>',
+            f'<text x="{vpc_x1+10}" y="{vpc_top+16}" font-size="10" font-weight="700" fill="#15803d">VPC</text>',
         ]
 
-        mods = zones[zone_key][:6]  # max 6 per column
-        for j, mod in enumerate(mods):
-            item_cx = cx + col_w // 2
-            item_cy = MAIN_TOP + COL_INNER + 28 + j * (BOX + BOX_GAP_V)
-            svg.append(_icon_box(item_cx, item_cy, BOX, mod.get("module", ""), mod.get("deploy_order")))
+    # Zone boxes
+    for z in zones_raw:
+        zid = z["id"]
+        zstyle = _ZONE_STYLE.get(z.get("type", "aws_managed"), _ZONE_STYLE["aws_managed"])
+        zx = zone_x[zid]
+        zw = zone_w[zid]
+        zy = TOP + (32 if has_vpc else 0)
+        zh = max_zone_h
 
-    # ── Platform services band ────────────────────────────────────────────────
-    plat_mods = zones["platform"]
-    if plat_mods:
+        dash = f'stroke-dasharray="{zstyle["dash"]}"' if zstyle["dash"] != "none" else ""
         svg += [
-            f'<rect x="{PAD + LEFT_OFFSET}" y="{PLAT_TOP}" '
-            f'width="{W - PAD * 2 - LEFT_OFFSET}" height="{PLAT_H}" rx="8" '
-            f'fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>',
-            f'<text x="{PAD + LEFT_OFFSET + 14}" y="{PLAT_TOP + 18}" '
-            f'font-size="10" font-weight="700" fill="#64748b" letter-spacing="1">'
-            f'PLATFORM SERVICES</text>',
+            f'<rect x="{zx}" y="{zy}" width="{zw}" height="{zh}" rx="8" '
+            f'fill="{zstyle["fill"]}" stroke="{zstyle["stroke"]}" stroke-width="1.5" {dash}/>',
+            f'<text x="{zx+zw//2}" y="{zy+15}" text-anchor="middle" font-size="9" '
+            f'font-weight="700" fill="{zstyle["label_color"]}" letter-spacing="0.8">'
+            f'{z.get("label","").upper()}</text>',
         ]
-        n = min(len(plat_mods), 7)
-        avail_w = W - PAD * 2 - LEFT_OFFSET - 20
-        step = avail_w // n
-        for k, mod in enumerate(plat_mods[:7]):
-            px = PAD + LEFT_OFFSET + 10 + k * step + step // 2
-            py = PLAT_TOP + PLAT_H // 2 + 4
-            svg.append(_icon_box(px, py, BOX - 4, mod.get("module", ""), mod.get("deploy_order")))
 
-    # ── User icon on left ─────────────────────────────────────────────────────
-    user_cx = PAD + LEFT_OFFSET // 2 - 4
-    user_cy = MAIN_TOP + MAIN_H // 2 - 10
-    svg.append(_user_icon(user_cx, user_cy))
+    # Node icon boxes
+    for z in zones_raw:
+        for nid in zone_nodes.get(z["id"], []):
+            node = node_map.get(nid, {"id": nid, "label": nid, "service": nid})
+            cx = node_cx.get(nid)
+            cy = node_cy.get(nid)
+            if cx is None or cy is None:
+                continue
+            svg.append(_icon_box(cx, cy, node))
 
-    # ── Flow arrows ───────────────────────────────────────────────────────────
-    arrow_num = 1
+    # Edges — draw solid first, then dashed on top
+    def _edge_endpoints(e: dict):
+        fid, tid = e["from"], e["to"]
+        x1, y1 = node_cx.get(fid), node_cy.get(fid)
+        x2, y2 = node_cx.get(tid), node_cy.get(tid)
+        if None in (x1, y1, x2, y2):
+            return None
+        # Shorten to icon box edge
+        half = _BOX // 2 + 4
+        dx, dy = x2 - x1, y2 - y1
+        dist = max((dx*dx + dy*dy)**0.5, 1)
+        sx, sy = dx/dist * half, dy/dist * half
+        return int(x1+sx), int(y1+sy), int(x2-sx), int(y2-sy)
 
-    def _first_cy(zone_key: str, default_y: int) -> int:
-        mods = zones[zone_key]
-        if not mods:
-            return default_y
-        return MAIN_TOP + COL_INNER + 28  # y-center of first item
+    for dashed_pass in (False, True):
+        for e in edges_raw:
+            if bool(e.get("dashed")) != dashed_pass:
+                continue
+            pts = _edge_endpoints(e)
+            if not pts:
+                continue
+            ax1, ay1, ax2, ay2 = pts
+            seq = e.get("seq") if not e.get("dashed") else None
+            svg.append(_arrow(ax1, ay1, ax2, ay2,
+                              label=e.get("label", ""),
+                              seq=seq,
+                              dashed=bool(e.get("dashed"))))
 
-    # User → Edge
-    if zones["edge"]:
-        ey = _first_cy("edge", MAIN_TOP + MAIN_H // 2)
-        svg.append(_flow_arrow(user_cx + 10, user_cy - 8, col_x[0] - 4, ey, arrow_num))
-        arrow_num += 1
-
-    # Edge → Compute
-    if zones["edge"] and zones["compute"]:
-        rows = min(2, len(zones["edge"]), len(zones["compute"]))
-        for row in range(rows):
-            ay = MAIN_TOP + COL_INNER + 28 + row * (BOX + BOX_GAP_V)
-            ax1 = col_x[0] + col_w
-            ax2 = col_x[1]
-            svg.append(_flow_arrow(ax1, ay, ax2, ay, arrow_num))
-            arrow_num += 1
-
-    # Compute → Data
-    if zones["compute"] and zones["data"]:
-        rows = min(2, len(zones["compute"]), len(zones["data"]))
-        for row in range(rows):
-            ay = MAIN_TOP + COL_INNER + 28 + row * (BOX + BOX_GAP_V)
-            ax1 = col_x[1] + col_w
-            ax2 = col_x[2]
-            svg.append(_flow_arrow(ax1, ay, ax2, ay, arrow_num))
-            arrow_num += 1
-
-    # Data → Platform (vertical)
-    if zones["data"] and zones["platform"]:
-        ax = col_x[2] + col_w // 2
-        ay1 = MAIN_TOP + MAIN_H
-        ay2 = PLAT_TOP
-        svg.append(
-            f'<line x1="{ax}" y1="{ay1}" x2="{ax}" y2="{ay2}" '
-            f'stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#ah)"/>'
-        )
-
-    # Compute → Platform (vertical, center)
-    if zones["compute"] and zones["platform"]:
-        ax = col_x[1] + col_w // 2
-        ay1 = MAIN_TOP + MAIN_H
-        ay2 = PLAT_TOP
-        svg.append(
-            f'<line x1="{ax}" y1="{ay1}" x2="{ax}" y2="{ay2}" '
-            f'stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#ah)"/>'
-        )
-
-    # ── Legend ────────────────────────────────────────────────────────────────
+    # Legend
     legend_items = [
-        ("#FF9900", "Compute"), ("#8C4FFF", "Networking"), ("#3F8624", "Data/Storage"),
+        ("#FF9900", "Compute"), ("#8C4FFF", "Networking"), ("#3F8624", "Data"),
         ("#DD344C", "Security"), ("#E7157B", "Monitoring"), ("#C7131F", "CI/CD"),
     ]
-    lx = PAD + LEFT_OFFSET + 10
+    lx = PAD
     ly = H - 14
     for color, lbl in legend_items:
         svg += [
-            f'<rect x="{lx}" y="{ly - 8}" width="12" height="12" rx="3" fill="{color}"/>',
-            f'<text x="{lx + 16}" y="{ly + 2}" font-size="10" fill="#64748b">{lbl}</text>',
+            f'<rect x="{lx}" y="{ly-8}" width="12" height="12" rx="3" fill="{color}"/>',
+            f'<text x="{lx+16}" y="{ly+2}" font-size="9.5" fill="#64748b">{lbl}</text>',
         ]
-        lx += 100
+        lx += 96
 
     svg.append("</svg>")
     return "\n".join(svg)
 
 
-# ── Styled Mermaid fallback (works with current frontend without SVG support) ──
+# ── Fallback: modules-based layout (when diagram JSON absent) ─────────────────
+
+def _render_from_modules(architecture: dict[str, Any]) -> str:
+    """Simple zone-based fallback when Gemini doesn't return diagram JSON."""
+    modules = sorted(architecture.get("modules", []), key=lambda m: m.get("deploy_order", 99))
+    arch_name = architecture.get("architecture_name", "AWS Architecture")
+
+    _ZONE_ORDER = ["edge", "compute", "data", "platform"]
+    _ZONE_LABELS = {"edge": "Edge / Network", "compute": "Compute / API",
+                    "data": "Data / Storage", "platform": "Platform Services"}
+
+    def _zone(mod: dict) -> str:
+        key = _svc_key(mod.get("module", ""))
+        cat = (mod.get("module", "").split("/")[0] if "/" in mod.get("module", "") else "").lower()
+        if key in {"cloudfront","route53","waf","alb","nlb","api-gateway","vpc"} or cat=="networking":
+            return "edge"
+        if key in {"lambda","ecs","eks","ec2","fargate","appsync","cognito","step-functions"} or cat=="compute":
+            return "compute"
+        if key in {"rds","aurora","dynamodb","elasticache","s3","sqs","sns","kinesis"} or cat in ("data","storage"):
+            return "data"
+        return "platform"
+
+    zones: dict[str, list] = {z: [] for z in _ZONE_ORDER}
+    for mod in modules:
+        zones[_zone(mod)].append(mod)
+
+    # Build a fake diagram structure from modules
+    zone_list, node_list, edge_list = [], [], []
+    zone_type_map = {"edge":"aws_edge","compute":"vpc_private","data":"vpc_private","platform":"aws_managed"}
+    for z in _ZONE_ORDER:
+        mods = zones[z]
+        if not mods:
+            continue
+        nids = [f"m{i}" for i, _ in enumerate(mods)]
+        zone_list.append({"id": z, "label": _ZONE_LABELS[z], "type": zone_type_map[z], "nodes": nids})
+        for i, mod in enumerate(mods):
+            node_list.append({"id": f"m{i}", "label": mod.get("label", _svc_key(mod.get("module",""))),
+                               "service": mod.get("module","")})
+
+    # Simple edges: edge→compute, compute→data
+    for i, em in enumerate(zones["edge"][:2]):
+        for j, cm in enumerate(zones["compute"][:2]):
+            edge_list.append({"from": f"m{i}", "to": f"m{len(zones['edge'])+j}",
+                               "seq": i+j+1, "label": "", "dashed": False})
+    base = len(zones["edge"])
+    for i, cm in enumerate(zones["compute"][:2]):
+        for j, dm in enumerate(zones["data"][:2]):
+            edge_list.append({"from": f"m{base+i}",
+                               "to": f"m{base+len(zones['compute'])+j}",
+                               "seq": None, "label": "", "dashed": False})
+
+    diagram = {"zones": zone_list, "nodes": node_list, "edges": edge_list}
+    return _render_from_diagram(diagram, arch_name)
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def generate_aws_svg(architecture: dict[str, Any]) -> str:
+    arch_name = architecture.get("architecture_name", "AWS Architecture")
+    diagram = architecture.get("diagram")
+    if diagram and diagram.get("nodes") and diagram.get("zones"):
+        return _render_from_diagram(diagram, arch_name)
+    return _render_from_modules(architecture)
+
 
 def generate_styled_mermaid(architecture: dict[str, Any]) -> str:
-    """Generate a color-coded Mermaid LR diagram from architecture JSON.
-
-    Overrides Gemini's raw mermaid output with a deterministic, well-labelled
-    diagram using AWS brand colors via classDef — works with the existing dark
-    Mermaid theme in the Stackport frontend without any frontend changes.
-    """
-    modules = sorted(
-        architecture.get("modules", []),
-        key=lambda m: m.get("deploy_order", 99),
-    )
-
-    lines = [
-        "graph LR",
-        "  classDef networking fill:#8C4FFF,stroke:#7040CC,color:#fff",
-        "  classDef compute    fill:#FF9900,stroke:#CC7A00,color:#fff",
-        "  classDef data       fill:#3F8624,stroke:#2E6418,color:#fff",
-        "  classDef storage    fill:#3F8624,stroke:#2E6418,color:#fff",
-        "  classDef security   fill:#DD344C,stroke:#AA2238,color:#fff",
-        "  classDef monitoring fill:#E7157B,stroke:#B50F60,color:#fff",
-        "  classDef observability fill:#E7157B,stroke:#B50F60,color:#fff",
-        "  classDef cicd       fill:#C7131F,stroke:#960F18,color:#fff",
-        "  classDef platform   fill:#232F3E,stroke:#1A2533,color:#fff",
-    ]
-
-    _cls_map = {
-        "networking": "networking", "compute": "compute",
-        "data": "data", "storage": "storage",
-        "security": "security", "monitoring": "monitoring",
-        "observability": "observability", "cicd": "cicd",
-    }
-
-    # Build node list
-    node_ids: dict[str, str] = {}
-    for i, mod in enumerate(modules):
-        nid = f"N{i}"
-        node_ids[mod.get("module", "")] = nid
-        label = _svc_label(mod.get("module", ""))
-        cat = (mod.get("module", "").split("/")[0] if "/" in mod.get("module", "") else "platform").lower()
-        cls = _cls_map.get(cat, "platform")
-        lines.append(f"  {nid}[{label}]:::{cls}")
-
-    # Draw edges by zone flow: edge → compute → data; platform dotted to compute
-    zones: dict[str, list[dict]] = {"edge": [], "compute": [], "data": [], "platform": []}
-    for mod in modules:
-        zones[_zone_for(mod.get("module", ""))].append(mod)
-
-    def _nid(mod: dict) -> str | None:
-        return node_ids.get(mod.get("module", ""))
-
-    # Sequential within edge
-    edge = zones["edge"]
-    for i in range(len(edge) - 1):
-        a, b = _nid(edge[i]), _nid(edge[i + 1])
-        if a and b:
-            lines.append(f"  {a} --> {b}")
-
-    # Edge → Compute (last edge → first compute)
-    if edge and zones["compute"]:
-        a = _nid(edge[-1])
-        for cm in zones["compute"][:2]:
-            b = _nid(cm)
-            if a and b:
-                lines.append(f"  {a} --> {b}")
-
-    # Compute → Data
-    for cm in zones["compute"][:2]:
-        for dm in zones["data"][:3]:
-            a, b = _nid(cm), _nid(dm)
-            if a and b:
-                lines.append(f"  {a} --> {b}")
-
-    # Platform → Compute (dotted — observability/security watching compute)
-    for pm in zones["platform"][:3]:
-        for cm in zones["compute"][:1]:
-            a, b = _nid(pm), _nid(cm)
-            if a and b:
-                lines.append(f"  {a} -.-> {b}")
-
-    return "\n".join(lines)
+    """Kept for import compatibility — not used when Gemini generates diagram JSON."""
+    return architecture.get("mermaid", "graph LR\n  A[Architecture]")

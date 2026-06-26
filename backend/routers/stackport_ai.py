@@ -67,7 +67,7 @@ Given requirements in plain English, design an AWS architecture using ONLY these
 - cicd/ecr             (ECR container registry)
 - monitoring/cloudwatch (CloudWatch logs + alarms)
 
-Return ONLY valid JSON matching this exact schema (no markdown fences, no explanation):
+Return ONLY valid JSON — no markdown fences, no explanation — matching this exact schema:
 {
   "architecture_name": "short descriptive name",
   "summary": "2-3 sentence description",
@@ -76,7 +76,7 @@ Return ONLY valid JSON matching this exact schema (no markdown fences, no explan
       "label": "human-readable name",
       "module": "category/name",
       "deploy_order": 1,
-      "reason": "one sentence: why this module is needed",
+      "reason": "one sentence why",
       "inputs": {"key": "realistic_value"}
     }
   ],
@@ -88,41 +88,52 @@ Return ONLY valid JSON matching this exact schema (no markdown fences, no explan
   "cost": {
     "min_usd": 50,
     "max_usd": 200,
-    "note": "main cost driver sentence",
-    "breakdown": ["Service $X/mo", "..."]
+    "note": "main cost driver",
+    "breakdown": ["Service $X/mo"]
   },
-  "mermaid": "...see mermaid rules below..."
+  "diagram": {
+    "zones": [
+      {
+        "id": "zone_id",
+        "label": "Zone Label",
+        "type": "internet|aws_edge|vpc_public|vpc_private|aws_managed",
+        "nodes": ["node_id_1", "node_id_2"]
+      }
+    ],
+    "nodes": [
+      {"id": "unique_id", "label": "Short Name", "service": "category/module_name"},
+      {"id": "user",      "label": "Users",       "service": "user"}
+    ],
+    "edges": [
+      {"from": "id1", "to": "id2", "seq": 1,    "label": "HTTPS",       "dashed": false},
+      {"from": "id1", "to": "id2", "seq": null,  "label": "monitors",    "dashed": true}
+    ]
+  }
 }
 
-Rules:
-- deploy_order sequential from 1; networking/vpc must be first if used
-- Always add security/kms when data services (rds, s3, elasticache) are present
-- Always add monitoring/cloudwatch
-- Add cicd/ecr when compute/eks or compute/ecs is used
-- inputs: realistic defaults for the requested environment
+DIAGRAM RULES — architecturally correct AWS relationships:
+Zone types (left to right in diagram):
+  internet    — outside AWS (put user here, and any on-prem systems)
+  aws_edge    — AWS edge services outside VPC: CloudFront, WAF, Route53, API Gateway, Cognito
+  vpc_public  — public subnet inside VPC: ALB, NAT Gateway
+  vpc_private — private subnet inside VPC: EKS, ECS, Lambda, RDS, ElastiCache
+  aws_managed — AWS-managed services outside VPC: S3, DynamoDB, ECR, CloudWatch, IAM, KMS, SNS, SQS
 
-MERMAID RULES — this is shown to directors, make it architecturally correct and visually professional:
-- Use "graph LR" (left-to-right flow)
-- Start with classDef blocks for AWS brand colors:
-    classDef networking fill:#8C4FFF,stroke:#7040CC,color:#fff
-    classDef compute fill:#FF9900,stroke:#CC7A00,color:#fff
-    classDef data fill:#3F8624,stroke:#2E6418,color:#fff
-    classDef security fill:#DD344C,stroke:#AA2238,color:#fff
-    classDef monitoring fill:#E7157B,stroke:#B50F60,color:#fff
-    classDef cicd fill:#C7131F,stroke:#960F18,color:#fff
-- Tag every node with :::networking, :::compute, :::data, :::security, :::monitoring, or :::cicd
-- Show CORRECT AWS data flows — examples of right vs wrong:
-    RIGHT: ECR -->|image pull| EKS   (EKS pulls container images from ECR)
-    WRONG: ECR -.-> EKS
-    RIGHT: EKS -->|writes| RDS       (app writes to database)
-    RIGHT: KMS -->|encrypts| RDS     (KMS key used by RDS for encryption at rest)
-    RIGHT: CloudWatch -.->|monitors| EKS   (CloudWatch observes, dotted line)
-    RIGHT: IAM -.->|authz| EKS       (IAM controls permissions, dotted)
-    RIGHT: User([User]) --> CF[CloudFront]:::networking  (user traffic entry point)
-- Use short human-readable node labels (not module paths)
-- 6-12 nodes maximum, show only meaningful connections
-- Edge labels in |pipes| explain the relationship
-- Double-check every arrow makes AWS architectural sense before including it"""
+Correct directional edges (verify every arrow makes real AWS sense):
+  User → CloudFront → ALB → EKS/ECS/Lambda    (request flow, sequential, numbered)
+  ECR →|image pull| EKS/ECS                   (EKS pulls images FROM ECR, not the other way)
+  EKS/Lambda →|writes| RDS/DynamoDB/S3        (app writes to databases/storage)
+  KMS →|encrypts| RDS, S3, ElastiCache        (KMS encrypts data at rest)
+  CloudWatch -.->|monitors| EKS/RDS/Lambda    (CloudWatch observes — dotted line)
+  IAM -.->|authz| EKS/Lambda                  (IAM grants permissions — dotted line)
+  SQS/SNS →|triggers| Lambda                  (event-driven patterns)
+
+Rules:
+- seq numbers are only on primary request-flow edges (the numbered happy path); set null for supporting services
+- dashed:true for observability, IAM, encryption edges; dashed:false for data/request flow
+- 6-14 nodes max, every node must be in exactly one zone
+- deploy_order in modules: networking first, compute second, data third, platform last
+- Always include security/kms when rds/s3/elasticache used; always include monitoring/cloudwatch"""
 
 
 async def _generate_architecture_stream(requirements: str, app_name: str, team_name: str, env: str):
