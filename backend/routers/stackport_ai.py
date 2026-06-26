@@ -149,6 +149,13 @@ async def _generate_architecture_stream(requirements: str, app_name: str, team_n
         raw = raw.strip()
 
         architecture = json.loads(raw)
+        # Generate AWS-style SVG diagram and attach to payload
+        try:
+            from backend.routers.aws_diagram import generate_aws_svg
+            architecture["svg_diagram"] = generate_aws_svg(architecture)
+        except Exception as _svg_err:
+            logger.warning("SVG generation failed (non-fatal): %s", _svg_err)
+
         yield _sse({"type": "status", "message": "Architecture designed — rendering…"})
         await asyncio.sleep(0)
         yield _sse({"type": "architecture", "data": architecture})
@@ -220,7 +227,13 @@ async def sp_architect_update(request: Request):
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
             raw = raw.rsplit("```", 1)[0]
-        return JSONResponse(json.loads(raw.strip()))
+        updated = json.loads(raw.strip())
+        try:
+            from backend.routers.aws_diagram import generate_aws_svg
+            updated["svg_diagram"] = generate_aws_svg(updated)
+        except Exception as _svg_err:
+            logger.warning("SVG generation failed (non-fatal): %s", _svg_err)
+        return JSONResponse(updated)
     except Exception as exc:
         logger.exception("Gemini architect update failed")
         return JSONResponse({"error": str(exc)}, status_code=500)
