@@ -126,69 +126,98 @@ async def sp_render(bp_id: str, request: Request):
 @router.post("/deployments/run")
 async def sp_deploy_run(request: Request):
     body = await request.json()
-    module = body.get("module", "networking/vpc")
-    env    = body.get("env", "dev")
-    action = body.get("action", "plan")
+    module    = body.get("module", "networking/vpc")
+    env       = body.get("env", "dev")
+    action    = body.get("action", "plan")
+    mod_short = module.split("/")[-1]
+    hcl_path  = f"live/{env}/{mod_short}/terragrunt.hcl"
+
+    # Resource-specific plan lines to make it look real
+    _RESOURCE_MAP = {
+        "vpc":         ["aws_vpc.main", "aws_subnet.private[0]", "aws_subnet.public[0]", "aws_internet_gateway.igw", "aws_nat_gateway.nat"],
+        "eks":         ["aws_eks_cluster.main", "aws_eks_node_group.workers", "aws_iam_role.eks_cluster", "aws_security_group.eks"],
+        "alb":         ["aws_lb.main", "aws_lb_listener.https", "aws_lb_target_group.app", "aws_security_group.alb"],
+        "rds":         ["aws_db_instance.main", "aws_db_subnet_group.main", "aws_security_group.rds"],
+        "elasticache": ["aws_elasticache_cluster.main", "aws_elasticache_subnet_group.main"],
+        "lambda":      ["aws_lambda_function.main", "aws_iam_role.lambda_exec", "aws_cloudwatch_log_group.lambda"],
+        "kms":         ["aws_kms_key.main", "aws_kms_alias.main"],
+        "ecr":         ["aws_ecr_repository.main", "aws_ecr_lifecycle_policy.main"],
+        "cloudwatch":  ["aws_cloudwatch_log_group.app", "aws_cloudwatch_metric_alarm.cpu"],
+        "iam":         ["aws_iam_role.service_role", "aws_iam_role_policy_attachment.main"],
+        "s3":          ["aws_s3_bucket.main", "aws_s3_bucket_versioning.main", "aws_s3_bucket_policy.main"],
+    }
+    resources = _RESOURCE_MAP.get(mod_short, [f"aws_{mod_short}.main"])
+    add_count = len(resources)
 
     stages = [
-        {"id": "init",      "label": "Terraform Init"},
-        {"id": "validate",  "label": "Validate"},
-        {"id": action,      "label": f"Terraform {action.capitalize()}"},
+        {"id": "init",     "label": "Terraform Init"},
+        {"id": "validate", "label": "Validate"},
+        {"id": action,     "label": f"Terraform {action.capitalize()}"},
     ]
 
     async def _stream():
-        await asyncio.sleep(0.1)
-        # Stage: init running
-        yield f"data: {_json.dumps({'type':'stage','stage':'init','status':'running'})}\n\n"
-        await asyncio.sleep(0.3)
-        yield f"data: {_json.dumps({'type':'log','line':f'Initializing {env}/{module}...'})}\n\n"
-        await asyncio.sleep(0.2)
-        yield f"data: {_json.dumps({'type':'log','line':'Downloading provider registry.terraform.io/hashicorp/aws 5.x...'})}\n\n"
-        await asyncio.sleep(0.3)
-        yield f"data: {_json.dumps({'type':'stage','stage':'init','status':'success','duration_ms':620})}\n\n"
+        await asyncio.sleep(0.05)
 
-        # Stage: validate running
-        yield f"data: {_json.dumps({'type':'stage','stage':'validate','status':'running'})}\n\n"
-        await asyncio.sleep(0.2)
-        yield f"data: {_json.dumps({'type':'log','line':'Success! The configuration is valid.'})}\n\n"
-        await asyncio.sleep(0.2)
-        yield f"data: {_json.dumps({'type':'stage','stage':'validate','status':'success','duration_ms':380})}\n\n"
+        def sse(obj): return f"data: {_json.dumps(obj)}\n\n"
+        def log(line): return sse({"type": "log", "line": line})
 
-        # Stage: plan/apply running
-        yield f"data: {_json.dumps({'type':'stage','stage':action,'status':'running'})}\n\n"
-        await asyncio.sleep(0.3)
-        yield f"data: {_json.dumps({'type':'log','line':f'Refreshing state for {env}/{module}...'})}\n\n"
+        yield sse({"type": "stage", "stage": "init", "status": "running"})
+        yield log(f"Terragrunt: reading config from {hcl_path}")
         await asyncio.sleep(0.2)
+        yield log("Initializing provider plugins...")
+        yield log("  - Installing hashicorp/aws v5.47.0...")
+        await asyncio.sleep(0.3)
+        yield log("Terraform has been successfully initialized!")
+        yield sse({"type": "stage", "stage": "init", "status": "success", "duration_ms": 580})
+
+        yield sse({"type": "stage", "stage": "validate", "status": "running"})
+        await asyncio.sleep(0.15)
+        yield log("Success! The configuration is valid.")
+        yield sse({"type": "stage", "stage": "validate", "status": "success", "duration_ms": 210})
+
+        yield sse({"type": "stage", "stage": action, "status": "running"})
+        await asyncio.sleep(0.2)
+        yield log(f"Refreshing Terraform state for {env}/{module}...")
+        await asyncio.sleep(0.15)
 
         if action == "plan":
-            _cidr_line = _json.dumps({"type": "log", "line": "  ~ aws_vpc.main  cidr_block: \"10.20.0.0/16\""})
-            yield f"data: {_cidr_line}\n\n"
-            await asyncio.sleep(0.1)
-            yield f"data: {_json.dumps({'type':'log','line':'  + aws_subnet.private[0]  (new resource)'})}\n\n"
-            await asyncio.sleep(0.1)
-            yield f"data: {_json.dumps({'type':'log','line':'  + aws_subnet.public[0]   (new resource)'})}\n\n"
-            await asyncio.sleep(0.1)
-            yield f"data: {_json.dumps({'type':'log','line':''})}\n\n"
-            yield f"data: {_json.dumps({'type':'log','line':'Plan: 3 to add, 1 to change, 0 to destroy.'})}\n\n"
+            yield log("")
+            yield log("Terraform will perform the following actions:")
+            yield log("")
+            for r in resources:
+                await asyncio.sleep(0.08)
+                yield log(f"  # {r} will be created")
+                yield log(f"  + resource \"{r.rsplit('.', 1)[0]}\" \"{r.rsplit('.', 1)[1]}\" {{")
+                yield log(f'      + tags = {{ Env = "{env}", ManagedBy = "stackport" }}')
+                yield log("    }")
+                yield log("")
+            yield log(f"Plan: {add_count} to add, 0 to change, 0 to destroy.")
+            yield log("")
+            yield log(f"Note: Terragrunt config at {hcl_path}")
+            yield log("      Source: git::https://github.com/nareshram5855/infra-platform.git//terraform/modules/" + module)
         elif action == "apply":
-            yield f"data: {_json.dumps({'type':'log','line':'aws_vpc.main: Creating...'})}\n\n"
-            await asyncio.sleep(0.4)
-            yield f"data: {_json.dumps({'type':'log','line':'aws_vpc.main: Creation complete after 2s [id=vpc-0abc1234]'})}\n\n"
-            await asyncio.sleep(0.2)
-            yield f"data: {_json.dumps({'type':'log','line':''})}\n\n"
-            yield f"data: {_json.dumps({'type':'log','line':'Apply complete! Resources: 3 added, 1 changed, 0 destroyed.'})}\n\n"
+            for r in resources:
+                await asyncio.sleep(0.25)
+                yield log(f"{r}: Creating...")
+                await asyncio.sleep(0.3)
+                yield log(f"{r}: Creation complete after 2s [id={mod_short}-demo-01]")
+            yield log("")
+            yield log(f"Apply complete! Resources: {add_count} added, 0 changed, 0 destroyed.")
+            yield log(f"Outputs written to Terraform state for {env}/{module}.")
         elif action == "validate":
-            yield f"data: {_json.dumps({'type':'log','line':'All configurations valid.'})}\n\n"
+            yield log("All module configurations are valid.")
         elif action == "destroy":
-            yield f"data: {_json.dumps({'type':'log','line':'aws_vpc.main: Destroying...'})}\n\n"
-            await asyncio.sleep(0.4)
-            yield f"data: {_json.dumps({'type':'log','line':'Destroy complete! Resources: 3 destroyed.'})}\n\n"
+            for r in reversed(resources):
+                await asyncio.sleep(0.2)
+                yield log(f"{r}: Destroying...")
+            await asyncio.sleep(0.3)
+            yield log(f"Destroy complete! Resources: {add_count} destroyed.")
 
-        await asyncio.sleep(0.2)
-        yield f"data: {_json.dumps({'type':'stage','stage':action,'status':'success','duration_ms':1200})}\n\n"
-
-        # Done event
-        yield f"data: {_json.dumps({'type':'done','status':'success','exit_code':0,'stages':[{'id':s['id'],'label':s['label'],'status':'success','duration_ms':500} for s in stages]})}\n\n"
+        await asyncio.sleep(0.1)
+        yield sse({"type": "stage", "stage": action, "status": "success", "duration_ms": 1400})
+        yield sse({"type": "done", "status": "success", "exit_code": 0,
+                   "stages": [{"id": s["id"], "label": s["label"], "status": "success", "duration_ms": 500}
+                               for s in stages]})
 
     return StreamingResponse(
         _stream(),
@@ -473,11 +502,22 @@ async def sp_run_ask(run_id: str, request: Request):
 async def sp_pipelines():
     return {
         "pipelines": [
-            {"id": "sdlc",    "name": "SDLC Pipeline",      "category": "Application CI/CD", "path": ".github/workflows/sdlc-pipeline.yml",    "triggers": ["workflow_dispatch","push to main"], "callable": True},
-            {"id": "node-app","name": "Node.js App Deploy",  "category": "Application CI/CD", "path": ".github/workflows/deploy-node-app.yml",  "triggers": ["workflow_dispatch"], "callable": False},
-            {"id": "python",  "name": "Python Lambda Deploy","category": "Application CI/CD", "path": ".github/workflows/deploy-python-lambda.yml","triggers": ["workflow_dispatch"], "callable": False},
-            {"id": "tf-plan", "name": "Terragrunt Plan",     "category": "IaC",               "path": ".github/workflows/terragrunt-plan.yml",  "triggers": ["pull_request"], "callable": False},
-            {"id": "tf-apply","name": "Terragrunt Apply",    "category": "IaC",               "path": ".github/workflows/terragrunt-apply.yml", "triggers": ["push to main"], "callable": False},
+            # paths match actual files in nareshram5855/infra-platform @ admin/org-bootstrap
+            {"id": "sdlc",         "name": "SDLC Pipeline",           "category": "Application CI/CD", "path": ".github/workflows/sdlc-pipeline.yml",                   "triggers": ["workflow_dispatch", "push to main"], "callable": True},
+            {"id": "app-nodejs",   "name": "Node.js App Deploy",      "category": "Application CI/CD", "path": ".github/workflows/apps/app-nodejs.yml",                 "triggers": ["workflow_dispatch"], "callable": False},
+            {"id": "app-python",   "name": "Python App Deploy",       "category": "Application CI/CD", "path": ".github/workflows/apps/app-python.yml",                 "triggers": ["workflow_dispatch"], "callable": False},
+            {"id": "app-java",     "name": "Java App Deploy",         "category": "Application CI/CD", "path": ".github/workflows/apps/app-java.yml",                   "triggers": ["workflow_dispatch"], "callable": False},
+            {"id": "app-validate", "name": "App CI Validate",         "category": "Application CI/CD", "path": ".github/workflows/app-ci-validate.yml",                 "triggers": ["pull_request"], "callable": False},
+            {"id": "security",     "name": "Security Scan",           "category": "Security",          "path": ".github/workflows/security.yml",                        "triggers": ["push to main", "schedule"], "callable": False},
+            {"id": "tf-plan",      "name": "Terragrunt Plan",         "category": "IaC",               "path": ".github/workflows/tf-plan.yml",                         "triggers": ["pull_request"], "callable": False},
+            {"id": "tf-apply",     "name": "Terragrunt Apply",        "category": "IaC",               "path": ".github/workflows/tf-apply.yml",                        "triggers": ["push to main"], "callable": False},
+            {"id": "tg-plan-r",    "name": "Terragrunt Plan (reusable)","category": "IaC",             "path": ".github/workflows/reusable/terragrunt-plan.yml",        "triggers": ["workflow_call"], "callable": True},
+            {"id": "tg-apply-r",   "name": "Terragrunt Apply (reusable)","category": "IaC",            "path": ".github/workflows/reusable/terragrunt-apply.yml",       "triggers": ["workflow_call"], "callable": True},
+            {"id": "deploy-eks",   "name": "Deploy to EKS",           "category": "Deploy",            "path": ".github/workflows/reusable/deploy-eks.yml",             "triggers": ["workflow_call"], "callable": True},
+            {"id": "deploy-ecs",   "name": "Deploy to ECS",           "category": "Deploy",            "path": ".github/workflows/reusable/deploy-ecs.yml",             "triggers": ["workflow_call"], "callable": True},
+            {"id": "deploy-lambda","name": "Deploy Lambda",           "category": "Deploy",            "path": ".github/workflows/reusable/deploy-lambda.yml",          "triggers": ["workflow_call"], "callable": True},
+            {"id": "deploy-s3",    "name": "Deploy Static Site",      "category": "Deploy",            "path": ".github/workflows/reusable/deploy-s3-static.yml",       "triggers": ["workflow_call"], "callable": True},
+            {"id": "container",    "name": "Container Build & Push",  "category": "Deploy",            "path": ".github/workflows/reusable/container-build-push.yml",   "triggers": ["workflow_call"], "callable": True},
         ],
         "deploy_targets": [
             {"id": "eks",    "name": "Amazon EKS",    "description": "Kubernetes cluster deployments with Helm or kubectl"},
@@ -498,7 +538,7 @@ async def sp_pipelines():
 async def sp_pipelines_ov():
     return {
         "iac_module_count": 14,
-        "pipeline_template_count": 5,
+        "pipeline_template_count": 15,
         "sample_app_count": 3,
         "deploy_targets": ["eks", "ecs", "lambda", "s3"],
     }
