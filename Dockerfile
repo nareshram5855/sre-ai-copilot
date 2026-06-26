@@ -12,6 +12,9 @@ RUN apk add --no-cache git
 WORKDIR /stackport
 RUN git clone --depth 1 --branch admin/org-bootstrap \
     https://github.com/nareshram5855/infra-platform.git .
+# Apply local patches — overrides cloned files so Docker cache never stales these
+COPY stackport-patches/components/ ./ui/frontend/src/components/
+COPY stackport-patches/pages/      ./ui/frontend/src/pages/
 WORKDIR /stackport/ui/frontend
 RUN npm ci
 RUN npx vite build --mode demo
