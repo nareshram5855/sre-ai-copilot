@@ -45,6 +45,8 @@ class Settings(BaseSettings):
         "resolved_incidents": "sre_resolved_incidents",
         # Resume-only RAG for recruiter Q&A — ingested via make ingest-profile
         "profile":            "sre_candidate_profile",
+        # AWS reference architectures — powers Architect tab RAG grounding
+        "aws_patterns":       "aws_patterns",
     }
 
     # ── LLM Routing ──────────────────────────────────────────────────────────

@@ -121,6 +121,35 @@ def ingest_text(
         return False
 
 
+def ingest_blueprint(service_name: str, blueprint_doc: str) -> bool:
+    """
+    Ingest a generated blueprint into the knowledge base.
+    
+    Blueprints are indexed in the 'architecture' collection so they're
+    discoverable via RAG queries for team leverage.
+    """
+    collection_name = settings.knowledge_collections.get("architecture", "architecture")
+    doc_id = f"blueprint-{service_name}"
+    
+    success = ingest_text(
+        collection_name=collection_name,
+        text=blueprint_doc,
+        metadata={
+            "source": "architect-bot",
+            "service_name": service_name,
+            "type": "blueprint",
+        },
+        doc_id=doc_id,
+    )
+    
+    if success:
+        logger.info("Blueprint indexed in knowledge base: %s (collection=%s)", service_name, collection_name)
+    else:
+        logger.warning("Failed to ingest blueprint: %s", service_name)
+    
+    return success
+
+
 def ingest_all() -> dict[str, int]:
     """Ingest all registered knowledge domains. Safe to call repeatedly.
     Domains are driven by config.knowledge_collections — adding a new domain

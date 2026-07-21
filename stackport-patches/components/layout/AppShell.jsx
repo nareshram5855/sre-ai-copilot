@@ -67,7 +67,7 @@ export default function AppShell() {
         {/* Demo banner — single scrollable line on mobile */}
         {import.meta.env.VITE_DEMO_MODE === "true" && (
           <div className="flex items-center gap-2 px-4 py-2 bg-accent-muted border-b border-accent/20 text-xs text-accent font-medium overflow-x-auto whitespace-nowrap shrink-0">
-            <span>🚀 Live Demo — mock data, no real AWS</span>
+            <span>🚀 Live Demo — infrastructure data is mocked, no real AWS resources</span>
             <span className="text-[var(--text-faint)]">·</span>
             <a
               href="https://github.com/nareshram5855/infra-platform"
@@ -78,7 +78,7 @@ export default function AppShell() {
               View source on GitHub
             </a>
             <span className="text-[var(--text-faint)]">·</span>
-            <span className="text-[var(--text-muted)] shrink-0">AI wizard disabled in demo</span>
+            <span className="text-emerald-400 shrink-0">✦ Architecture AI powered by Gemini 2.5 Flash</span>
           </div>
         )}
 

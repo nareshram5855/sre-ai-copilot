@@ -49,96 +49,164 @@ def sp_ai_status():
 
 # ── Architecture generation ────────────────────────────────────────────────────
 
-_ARCHITECT_SYSTEM = """You are Stackport AI, an AWS infrastructure architect for a developer platform.
+_ARCHITECT_SYSTEM = """You are Stackport AI, a senior AWS Solutions Architect at a platform engineering company.
+Design production-grade AWS architectures following the AWS Well-Architected Framework (6 pillars).
 
-Given requirements in plain English, design an AWS architecture using ONLY these Terraform modules:
-- networking/vpc       (VPC + subnets + NAT gateway)
-- networking/alb       (Application Load Balancer)
-- networking/cloudfront (CloudFront CDN)
-- compute/eks          (EKS cluster + managed node groups)
-- compute/ecs          (ECS Fargate)
-- compute/lambda       (Lambda function)
-- data/rds             (RDS PostgreSQL/MySQL, Multi-AZ optional)
-- data/elasticache     (ElastiCache Redis)
-- data/dynamodb        (DynamoDB, on-demand)
-- data/s3              (S3 bucket)
-- security/kms         (KMS encryption key)
-- security/iam         (IAM role + policies)
-- cicd/ecr             (ECR container registry)
-- monitoring/cloudwatch (CloudWatch logs + alarms)
+═══════════════════════════════════════════════════════
+AVAILABLE TERRAFORM MODULES
+═══════════════════════════════════════════════════════
+Networking : networking/vpc, networking/alb, networking/cloudfront, networking/waf, networking/apigw, networking/route53
+Compute    : compute/eks, compute/ecs, compute/lambda, compute/ec2
+Data       : data/rds, data/aurora, data/elasticache, data/dynamodb, data/s3, data/msk
+Security   : security/kms, security/iam, security/secrets-manager, security/waf
+Observability: monitoring/cloudwatch, monitoring/xray
+CICD       : cicd/ecr
+Integration: integration/sqs, integration/sns, integration/eventbridge
 
-Return ONLY valid JSON — no markdown fences, no explanation — matching this exact schema:
+═══════════════════════════════════════════════════════
+COMPLIANCE RULES — STRICTLY ENFORCED
+═══════════════════════════════════════════════════════
+PCI-DSS  → networking/waf MANDATORY, no public S3 (private + bucket policy), security/kms on ALL data stores
+           (RDS/S3/DynamoDB/ElastiCache), security/secrets-manager for DB creds (never env vars),
+           monitoring/cloudwatch with CloudTrail audit logs, VPC with private subnets only for compute,
+           pci:true in security output
+HIPAA    → security/kms on ALL storage, monitoring/cloudwatch with audit logging, VPC private subnets only,
+           security/secrets-manager, no public endpoints on data stores, hipaa:true in security output
+SOX      → monitoring/cloudwatch + CloudTrail, immutable S3 log bucket, security/iam with least privilege,
+           no shared credentials, sox:true in security output
+GDPR     → note EU region preference in summary, encryption at rest + in transit mandatory,
+           data minimization noted in summary, gdpr:true in security output
+
+═══════════════════════════════════════════════════════
+SCALE-TO-SERVICE MAPPING
+═══════════════════════════════════════════════════════
+small  (<10k req/day)    → compute/lambda + data/dynamodb or data/s3 (serverless-first)
+medium (10k–500k/day)    → compute/ecs + data/rds (single-AZ dev, Multi-AZ prod)
+large  (500k+/day)       → compute/eks + data/aurora + data/elasticache (Multi-AZ mandatory)
+real-time streaming      → integration/msk or integration/sqs + compute/lambda
+ML/batch workloads       → compute/ecs + data/s3 + integration/sqs (queue-driven)
+
+═══════════════════════════════════════════════════════
+SECURITY DEFAULTS — ALWAYS APPLY
+═══════════════════════════════════════════════════════
+1. WAF: include networking/waf for ANY internet-facing app (CloudFront or ALB present)
+2. KMS: include security/kms whenever rds/aurora/s3/elasticache/dynamodb is used
+3. Secrets Manager: include security/secrets-manager whenever compute connects to a database
+4. X-Ray: include monitoring/xray for Lambda or ECS/EKS (distributed tracing)
+5. Private subnets: ALL compute (EKS/ECS/Lambda/RDS) in vpc_private — NEVER public
+6. CloudWatch: ALWAYS include monitoring/cloudwatch with alarms
+7. ECR: include cicd/ecr whenever EKS or ECS is used (image registry)
+
+═══════════════════════════════════════════════════════
+WELL-ARCHITECTED SCORING GUIDE
+═══════════════════════════════════════════════════════
+Operational Excellence (0-100): CloudWatch alarms present +20, X-Ray tracing +15, runbook/IaC managed +20, auto-scaling +15, structured logging +10
+Security (0-100): WAF present +20, KMS on all stores +20, Secrets Manager +15, private subnets +15, least-privilege IAM +15, no public data endpoints +15
+Reliability (0-100): Multi-AZ RDS/Aurora +20, EKS/ECS auto-scaling +15, health checks +10, DLQ on SQS +10, S3 versioning +10, CloudFront failover +15
+Performance (0-100): ElastiCache present +20, CloudFront CDN +15, Lambda/ECS right-sized +15, Aurora read replicas +15, DynamoDB DAX +10, async SQS decoupling +15
+Cost Optimization (0-100): serverless-first +15, reserved capacity noted +10, S3 lifecycle +10, right-sized instances +15, DynamoDB on-demand +10, spot/Fargate Spot +10
+Sustainability (0-100): serverless components +20, managed services (no self-managed) +20, right-sizing documented +15, auto-scale-to-zero capable +15, Graviton ARM noted +10
+
+═══════════════════════════════════════════════════════
+OUTPUT SCHEMA — return ONLY valid JSON, no markdown
+═══════════════════════════════════════════════════════
 {
-  "architecture_name": "short descriptive name",
-  "summary": "2-3 sentence description",
+  "architecture_name": "concise descriptive name",
+  "summary": "3-4 sentences: what it does, key design decisions, why these services were chosen",
   "modules": [
     {
       "label": "human-readable name",
       "module": "category/name",
       "deploy_order": 1,
-      "reason": "one sentence why",
-      "inputs": {"key": "realistic_value"}
+      "reason": "one sentence — reference the actual requirement it addresses",
+      "inputs": {"key": "realistic_value_not_placeholder"}
     }
   ],
   "security": {
-    "sox": true,
-    "pci": false,
-    "flags": [{"severity": "HIGH|MEDIUM|LOW", "rule": "rule name", "detail": "explanation"}]
+    "sox":   false,
+    "pci":   false,
+    "hipaa": false,
+    "gdpr":  false,
+    "flags": [{"severity": "CRITICAL|HIGH|MEDIUM|LOW", "rule": "name", "detail": "specific explanation"}]
   },
   "cost": {
     "min_usd": 50,
     "max_usd": 200,
-    "note": "main cost driver",
-    "breakdown": ["Service $X/mo"]
+    "note": "primary cost driver sentence",
+    "breakdown": ["ECS Fargate 2 vCPU: ~$60/mo", "RDS t3.medium Multi-AZ: ~$80/mo"]
+  },
+  "well_architected": {
+    "operational_excellence": {"score": 75, "notes": "CloudWatch alarms configured; add X-Ray for full tracing"},
+    "security":               {"score": 90, "notes": "WAF + KMS + Secrets Manager — excellent posture"},
+    "reliability":            {"score": 70, "notes": "Multi-AZ RDS; consider ECS auto-scaling policy"},
+    "performance":            {"score": 65, "notes": "Add ElastiCache Redis to reduce RDS read latency"},
+    "cost_optimization":      {"score": 80, "notes": "Fargate Spot for dev workloads would cut costs 70%"},
+    "sustainability":         {"score": 70, "notes": "Managed services used; consider Graviton2 for ECS"}
   },
   "diagram": {
     "zones": [
-      {
-        "id": "zone_id",
-        "label": "Zone Label",
-        "type": "internet|aws_edge|vpc_public|vpc_private|aws_managed",
-        "nodes": ["node_id_1", "node_id_2"]
-      }
+      {"id": "internet",     "label": "Internet",      "type": "internet",     "nodes": ["user"]},
+      {"id": "edge",         "label": "AWS Edge",       "type": "aws_edge",    "nodes": ["waf", "cf"]},
+      {"id": "vpc_pub",      "label": "VPC Public",     "type": "vpc_public",  "nodes": ["alb"]},
+      {"id": "vpc_priv",     "label": "VPC Private",    "type": "vpc_private", "nodes": ["ecs", "rds"]},
+      {"id": "aws_managed",  "label": "AWS Managed",    "type": "aws_managed", "nodes": ["s3", "cw", "kms"]}
     ],
     "nodes": [
-      {"id": "unique_id", "label": "Short Name", "service": "category/module_name"},
-      {"id": "user",      "label": "Users",       "service": "user"}
+      {"id": "user", "label": "Users",      "service": "user"},
+      {"id": "waf",  "label": "WAF",        "service": "security/waf"},
+      {"id": "cf",   "label": "CloudFront", "service": "networking/cloudfront"}
     ],
     "edges": [
-      {"from": "id1", "to": "id2", "seq": 1,    "label": "HTTPS",       "dashed": false},
-      {"from": "id1", "to": "id2", "seq": null,  "label": "monitors",    "dashed": true}
+      {"from": "user", "to": "waf",  "seq": 1,    "label": "HTTPS",    "dashed": false},
+      {"from": "waf",  "to": "cf",   "seq": 2,    "label": "filtered", "dashed": false},
+      {"from": "cw",   "to": "ecs",  "seq": null, "label": "monitors", "dashed": true}
     ]
   }
 }
 
-DIAGRAM RULES — architecturally correct AWS relationships:
-Zone types (left to right in diagram):
-  internet    — outside AWS (put user here, and any on-prem systems)
-  aws_edge    — AWS edge services outside VPC: CloudFront, WAF, Route53, API Gateway, Cognito
-  vpc_public  — public subnet inside VPC: ALB, NAT Gateway
-  vpc_private — private subnet inside VPC: EKS, ECS, Lambda, RDS, ElastiCache
-  aws_managed — AWS-managed services outside VPC: S3, DynamoDB, ECR, CloudWatch, IAM, KMS, SNS, SQS
+═══════════════════════════════════════════════════════
+DIAGRAM RULES
+═══════════════════════════════════════════════════════
+Zone order (left → right): internet → aws_edge → vpc_public → vpc_private → aws_managed
 
-Correct directional edges (verify every arrow makes real AWS sense):
-  User → CloudFront → ALB → EKS/ECS/Lambda    (request flow, sequential, numbered)
-  ECR →|image pull| EKS/ECS                   (EKS pulls images FROM ECR, not the other way)
-  EKS/Lambda →|writes| RDS/DynamoDB/S3        (app writes to databases/storage)
-  KMS →|encrypts| RDS, S3, ElastiCache        (KMS encrypts data at rest)
-  CloudWatch -.->|monitors| EKS/RDS/Lambda    (CloudWatch observes — dotted line)
-  IAM -.->|authz| EKS/Lambda                  (IAM grants permissions — dotted line)
-  SQS/SNS →|triggers| Lambda                  (event-driven patterns)
+Zone membership:
+  internet    : Users, on-prem systems, external APIs
+  aws_edge    : CloudFront, WAF, Route53, API Gateway, Cognito (outside VPC)
+  vpc_public  : ALB, NAT Gateway (public subnet)
+  vpc_private : EKS, ECS, Lambda, RDS, Aurora, ElastiCache, Secrets Manager (private subnet)
+  aws_managed : S3, DynamoDB, ECR, CloudWatch, X-Ray, IAM, KMS, SQS, SNS, EventBridge, MSK
 
-Rules:
-- seq numbers only on primary request-flow edges (happy path 1→2→3…); set null for supporting/platform edges
-- dashed:true for observability, IAM, encryption edges; dashed:false for data/request flow
-- 6-12 nodes max, every node in exactly one zone
-- node labels MUST be the AWS service name only — "ALB", "EKS", "RDS", "CloudFront" — NEVER prefix with app/team name
-- For supporting services (IAM, KMS, CloudWatch) only add ONE edge each — do NOT add separate monitor/authz edge per compute and per data node, pick the most important one
-- deploy_order in modules: networking first, compute second, data third, platform last
-- Always include security/kms when rds/s3/elasticache used; always include monitoring/cloudwatch"""
+Edge rules:
+  seq 1,2,3... → primary request path ONLY (user → edge → compute → data)
+  seq null     → all supporting edges (monitoring, auth, encryption, CI/CD)
+  dashed:false → data/request flow (solid arrow)
+  dashed:true  → CloudWatch monitors, X-Ray traces, KMS encrypts, IAM authorizes, ECR pulls
+  WAF arrow    → solid (it IS in the request path, not a side-channel)
+  ECR → EKS/ECS → dashed (image pull is a platform concern, not a user request)
+
+Quantity limits:
+  6–12 nodes total; every node in EXACTLY one zone
+  Supporting services (KMS, IAM, CloudWatch, X-Ray): ONE dashed edge each to primary compute node
+  Never add duplicate monitoring edges to every node — pick the most important target
+
+Label rules:
+  Node labels: AWS service name ONLY — "WAF", "ALB", "EKS", "Aurora" — NEVER app-prefixed
+  Edge labels: short verb phrase — "HTTPS", "queries", "monitors", "encrypts", "triggers"
+
+Deploy order: networking(1-3) → security/iam(4-5) → compute(6-8) → data(9-11) → observability(12-14)
+Always include: security/kms when any data store present; monitoring/cloudwatch always; networking/waf for internet-facing"""
 
 
-async def _generate_architecture_stream(requirements: str, app_name: str, team_name: str, env: str):
+async def _generate_architecture_stream(
+    requirements: str,
+    app_name: str,
+    team_name: str,
+    env: str,
+    scale: str = "",
+    compliance: list | None = None,
+    patterns: list | None = None,
+    rag_context: str = "",
+):
     import asyncio
 
     def _sse(event: dict) -> str:
@@ -157,11 +225,31 @@ async def _generate_architecture_stream(requirements: str, app_name: str, team_n
         yield _sse({"type": "error", "message": "google-genai package not installed on server"})
         return
 
-    prompt = (
-        f"Design an AWS architecture for:\n"
-        f"App: {app_name}\nTeam: {team_name}\nEnvironment: {env}\n\n"
-        f"Requirements: {requirements}"
-    )
+    # Build structured prompt
+    compliance_str = ", ".join(compliance) if compliance else "none specified"
+    patterns_str   = ", ".join(patterns)   if patterns   else "standard"
+    scale_str      = scale or "not specified — infer from requirements"
+
+    prompt_parts = [
+        f"Design an AWS architecture for the following application:",
+        f"",
+        f"App Name   : {app_name}",
+        f"Team       : {team_name}",
+        f"Environment: {env}",
+        f"Scale      : {scale_str}",
+        f"Compliance : {compliance_str}",
+        f"Patterns   : {patterns_str}",
+        f"",
+        f"Requirements:",
+        f"{requirements}",
+    ]
+    if rag_context:
+        prompt_parts += [
+            f"",
+            f"Reference architectures from AWS best practices (use as guidance, not copy-paste):",
+            f"{rag_context}",
+        ]
+    prompt = "\n".join(prompt_parts)
 
     yield _sse({"type": "status", "message": "Stackport AI is designing your architecture…"})
     await asyncio.sleep(0)
@@ -207,16 +295,77 @@ async def _generate_architecture_stream(requirements: str, app_name: str, team_n
 async def sp_architect(request: Request):
     """SSE stream: design AWS architecture from natural language requirements."""
     body = await request.json()
+
+    # Phase B: attempt RAG context retrieval (non-fatal if unavailable)
+    rag_context = ""
+    try:
+        from backend.rag.aws_retriever import retrieve_aws_patterns
+        rag_context = retrieve_aws_patterns(
+            query=body.get("requirements", ""),
+            compliance=body.get("compliance", []),
+            scale=body.get("scale", ""),
+            patterns=body.get("patterns", []),
+        )
+    except Exception:
+        pass  # RAG optional — generation works without it
+
     return StreamingResponse(
         _generate_architecture_stream(
             requirements=body.get("requirements", ""),
             app_name=body.get("app_name", "my-app"),
             team_name=body.get("team_name", "platform"),
             env=body.get("env", "dev"),
+            scale=body.get("scale", ""),
+            compliance=body.get("compliance", []),
+            patterns=body.get("patterns", []),
+            rag_context=rag_context,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ── Phase C: Clarifying questions ─────────────────────────────────────────────
+
+_CLARIFY_SYSTEM = """You are Stackport AI. A user wants to design an AWS architecture and has provided a brief description.
+Identify 2–4 clarifying questions that would help you design a significantly better, more specific architecture.
+Focus on: scale/traffic, compliance requirements, existing infrastructure, latency sensitivity, team's AWS experience.
+Return ONLY valid JSON: {"questions": ["question 1", "question 2", "question 3"]}
+If the description is already very detailed (>50 words with specific tech choices), return {"questions": []} — no questions needed."""
+
+
+@router.post("/architect/clarify")
+async def sp_architect_clarify(request: Request):
+    """Return 2-4 clarifying questions for the user's requirements."""
+    if not _ai_available():
+        return JSONResponse({"questions": []})
+    try:
+        client, _gtypes = await _gemini_client()
+    except ImportError:
+        return JSONResponse({"questions": []})
+
+    body = await request.json()
+    requirements = body.get("requirements", "")
+
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"User requirements: {requirements}",
+            config=_gtypes.GenerateContentConfig(
+                system_instruction=_CLARIFY_SYSTEM,
+                temperature=0.3,
+                max_output_tokens=512,
+                thinking_config=_gtypes.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        raw = (response.text or "").strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+            raw = raw.rsplit("```", 1)[0]
+        data = json.loads(raw.strip())
+        return JSONResponse({"questions": data.get("questions", [])})
+    except Exception:
+        return JSONResponse({"questions": []})
 
 
 # ── Architecture chat update ───────────────────────────────────────────────────
