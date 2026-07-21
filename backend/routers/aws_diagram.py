@@ -489,10 +489,9 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
         '</marker>'
         '</defs>',
         f'<rect x="0" y="0" width="{W}" height="{H}" fill="#f8fafc"/>',
-        # Title bar
+        # Title bar — watermark moved to bottom-right to avoid title overlap
         f'<rect x="0" y="0" width="{W}" height="52" fill="#1e293b"/>',
-        f'<text x="{W//2}" y="32" text-anchor="middle" font-size="17" font-weight="700" fill="white">{arch_name}</text>',
-        f'<text x="{W-PAD}" y="32" text-anchor="end" font-size="10.5" fill="#FF9900" font-weight="700">Stackport AI</text>',
+        f'<text x="{W//2}" y="33" text-anchor="middle" font-size="17" font-weight="700" fill="white">{arch_name}</text>',
         # AWS Cloud dashed border
         f'<rect x="{PAD//2}" y="60" width="{W-PAD}" height="{H-68}" rx="10" '
         f'fill="#FFFBF5" stroke="#FF9900" stroke-width="2" stroke-dasharray="10,5"/>',
@@ -618,6 +617,11 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
         ]
         lx += 100
 
+    # Stackport AI watermark — bottom-right corner, never overlaps title
+    svg.append(
+        f'<text x="{W-PAD}" y="{H-4}" text-anchor="end" font-size="9" '
+        f'fill="#FF9900" font-weight="700" opacity="0.8">Stackport AI</text>'
+    )
     svg.append("</svg>")
     return "\n".join(svg)
 
