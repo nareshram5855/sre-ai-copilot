@@ -62,6 +62,7 @@ Security   : security/kms, security/iam, security/secrets-manager, security/waf
 Observability: monitoring/cloudwatch, monitoring/xray
 CICD       : cicd/ecr
 Integration: integration/sqs, integration/sns, integration/eventbridge
+AI / ML    : ai/bedrock, ai/opensearch, ai/sagemaker
 
 ═══════════════════════════════════════════════════════
 COMPLIANCE RULES — STRICTLY ENFORCED
@@ -78,6 +79,35 @@ GDPR     → note EU region preference in summary, encryption at rest + in trans
            data minimization noted in summary, gdpr:true in security output
 
 ═══════════════════════════════════════════════════════
+GENAI / AI AGENT RULES — trigger: requirements mention AI, agent, LLM, chatbot, RAG, embeddings, GPT, Claude, Bedrock, knowledge base, vector
+═══════════════════════════════════════════════════════
+MANDATORY for any AI/agent/LLM workload:
+  ai/bedrock        → LLM inference (Claude, Llama, Titan via Amazon Bedrock API) — in aws_managed zone
+  ai/opensearch     → vector store for RAG (OpenSearch Serverless with k-NN index) — in aws_managed zone
+  data/dynamodb     → conversation history, agent session state, tool call logs — in aws_managed zone
+  data/s3           → knowledge base documents, embeddings, agent artifacts — in aws_managed zone
+  security/secrets-manager → LLM API keys, embedding model credentials — in vpc_private
+  monitoring/xray   → trace agent reasoning chains (each LLM call is a segment)
+  monitoring/cloudwatch → token usage alarm, latency p99, error rate dashboard
+
+Agent runtime (pick ONE based on scale):
+  small/simple  → compute/lambda (stateless, single-step agent, <15 min)
+  medium/multi-step → compute/ecs (stateful, long-running chains, Langchain/LlamaIndex)
+  large/complex → compute/eks (multi-agent, fine-tuned models, high concurrency)
+
+Optional AI services:
+  networking/apigw  → REST/WebSocket API for chat interface
+  ai/sagemaker      → only if custom fine-tuned model (NOT for standard LLM use — use Bedrock instead)
+  integration/sqs   → async agent task queue (long-running agent jobs)
+  integration/eventbridge → agent event routing, tool result callbacks
+
+GenAI diagram node labels (use exact service names):
+  "Bedrock" — LLM inference
+  "OpenSearch" — vector search / knowledge base
+  "DynamoDB" — conversation history
+  "S3" — document store
+
+═══════════════════════════════════════════════════════
 SCALE-TO-SERVICE MAPPING
 ═══════════════════════════════════════════════════════
 small  (<10k req/day)    → compute/lambda + data/dynamodb or data/s3 (serverless-first)
@@ -85,6 +115,7 @@ medium (10k–500k/day)    → compute/ecs + data/rds (single-AZ dev, Multi-AZ p
 large  (500k+/day)       → compute/eks + data/aurora + data/elasticache (Multi-AZ mandatory)
 real-time streaming      → integration/msk or integration/sqs + compute/lambda
 ML/batch workloads       → compute/ecs + data/s3 + integration/sqs (queue-driven)
+AI/agent/LLM workloads  → ai/bedrock + ai/opensearch + data/dynamodb (see GENAI RULES above)
 
 ═══════════════════════════════════════════════════════
 SECURITY DEFAULTS — ALWAYS APPLY
@@ -174,7 +205,7 @@ Zone membership:
   aws_edge    : CloudFront, WAF, Route53, API Gateway, Cognito (outside VPC)
   vpc_public  : ALB, NAT Gateway (public subnet)
   vpc_private : EKS, ECS, Lambda, RDS, Aurora, ElastiCache, Secrets Manager (private subnet)
-  aws_managed : S3, DynamoDB, ECR, CloudWatch, X-Ray, IAM, KMS, SQS, SNS, EventBridge, MSK
+  aws_managed : S3, DynamoDB, ECR, CloudWatch, X-Ray, IAM, KMS, SQS, SNS, EventBridge, MSK, Bedrock, OpenSearch, SageMaker
 
 Edge rules:
   seq 1,2,3... → primary request path ONLY (user → edge → compute → data)

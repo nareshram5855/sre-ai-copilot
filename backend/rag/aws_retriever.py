@@ -35,6 +35,16 @@ _SCALE_TERMS = {
     "large":  "EKS Kubernetes microservices Aurora MSK high availability",
 }
 
+# Pattern → query enrichment (helps vector search hit specialized docs)
+_PATTERN_TERMS = {
+    "ml/ai":       "Bedrock OpenSearch vector RAG LLM agent embeddings knowledge base",
+    "event-driven": "SQS SNS EventBridge async DLQ fan-out",
+    "static site":  "CloudFront S3 CDN OAC SPA",
+    "streaming":    "Kinesis MSK real-time fraud detection",
+    "batch":        "SQS Lambda S3 Glue batch processing",
+    "rest api":     "API Gateway Lambda ECS ALB microservices",
+}
+
 _ingested = False  # module-level flag, reset when process restarts
 
 
@@ -94,8 +104,9 @@ def retrieve_aws_patterns(
             enriched_parts.append(term)
     if scale:
         enriched_parts.append(_SCALE_TERMS.get(scale.lower(), ""))
-    if patterns:
-        enriched_parts.append(" ".join(patterns))
+    for pat in (patterns or []):
+        term = _PATTERN_TERMS.get(pat.lower(), pat)
+        enriched_parts.append(term)
 
     enriched_query = " ".join(p for p in enriched_parts if p)
     if not enriched_query.strip():

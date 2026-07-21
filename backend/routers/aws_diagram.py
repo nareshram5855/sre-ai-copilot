@@ -27,12 +27,16 @@ _SERVICE_COLORS: dict[str, str] = {
     "secrets": "#DD344C", "cloudwatch": "#E7157B", "xray": "#E7157B",
     "ecr": "#C7131F", "codepipeline": "#C7131F",
     "github-actions": "#333333",
+    # AI / ML — teal to distinguish from compute/data
+    "bedrock": "#01A88D", "opensearch": "#01A88D", "sagemaker": "#01A88D",
+    "knowledge-base": "#01A88D", "vector-store": "#01A88D",
 }
 
 _CAT_COLORS: dict[str, str] = {
     "networking": "#8C4FFF", "compute": "#FF9900", "data": "#3F8624",
     "storage": "#3F8624", "security": "#DD344C", "cicd": "#C7131F",
     "monitoring": "#E7157B", "observability": "#E7157B",
+    "ai": "#01A88D", "ml": "#01A88D",
 }
 
 _LABELS: dict[str, str] = {
@@ -47,6 +51,9 @@ _LABELS: dict[str, str] = {
     "kms": "KMS", "cloudwatch": "CloudWatch", "xray": "X-Ray",
     "codepipeline": "CodePipeline", "ecr": "ECR",
     "github-actions": "GitHub CI",
+    # AI / ML
+    "bedrock": "Bedrock", "opensearch": "OpenSearch", "sagemaker": "SageMaker",
+    "knowledge-base": "Knowledge Base", "vector-store": "Vector Store",
 }
 
 # ── SVG icon paths (centered at 0,0, ±20 viewport) ───────────────────────────
@@ -228,8 +235,36 @@ _ICONS: dict[str, str] = {
         '<circle cx="-10" cy="12" r="3" fill="white" opacity="0.8"/>'
         '<circle cx="10"  cy="12" r="3" fill="white" opacity="0.8"/>'
     ),
+    # ── AI / ML icons ─────────────────────────────────────────────────────────
+    # Bedrock: neural network / foundation model — triangle of nodes connected
+    "bedrock": (
+        '<circle cx="0"   cy="-16" r="4.5" fill="white" opacity="0.95"/>'
+        '<circle cx="-14" cy="8"   r="4.5" fill="white" opacity="0.95"/>'
+        '<circle cx="14"  cy="8"   r="4.5" fill="white" opacity="0.95"/>'
+        '<line x1="0" y1="-11" x2="-10" y2="4" stroke="white" stroke-width="1.8" opacity="0.85"/>'
+        '<line x1="0" y1="-11" x2="10"  y2="4" stroke="white" stroke-width="1.8" opacity="0.85"/>'
+        '<line x1="-10" y1="4" x2="10"  y2="4" stroke="white" stroke-width="1.8" opacity="0.85"/>'
+        '<circle cx="0" cy="-3" r="3" fill="white" opacity="0.7"/>'
+    ),
+    # OpenSearch: magnifying glass — vector/semantic search
+    "opensearch": (
+        '<circle cx="-3" cy="-3" r="12" fill="none" stroke="white" stroke-width="2.5"/>'
+        '<line x1="6" y1="6" x2="17" y2="17" stroke="white" stroke-width="3" stroke-linecap="round"/>'
+        '<line x1="-9" y1="-3" x2="3" y2="-3" stroke="white" stroke-width="1.5" opacity="0.7"/>'
+        '<line x1="-3" y1="-9" x2="-3" y2="3" stroke="white" stroke-width="1.5" opacity="0.7"/>'
+    ),
+    # SageMaker: ML pipeline layers with connector
+    "sagemaker": (
+        '<rect x="-16" y="-17" width="32" height="10" rx="3" fill="white" opacity="0.85"/>'
+        '<rect x="-16" y="-3"  width="32" height="10" rx="3" fill="white" opacity="0.6"/>'
+        '<rect x="-16" y="11"  width="32" height="10" rx="3" fill="white" opacity="0.4"/>'
+        '<line x1="0" y1="-7"  x2="0" y2="-3"  stroke="white" stroke-width="1.8"/>'
+        '<line x1="0" y1="7"   x2="0" y2="11"  stroke="white" stroke-width="1.8"/>'
+    ),
 }
 _ICONS["secrets"] = _ICONS["secrets-manager"]
+_ICONS["knowledge-base"] = _ICONS["opensearch"]
+_ICONS["vector-store"]   = _ICONS["opensearch"]
 _ICONS["vpc"] = _ICONS.get("vpc", "")
 
 
