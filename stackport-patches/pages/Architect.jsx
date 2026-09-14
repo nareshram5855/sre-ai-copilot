@@ -35,6 +35,7 @@ async function streamPost(path, body, { onEvent, onDone, onError }) {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
+    let receivedResult = false;
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -44,9 +45,15 @@ async function streamPost(path, body, { onEvent, onDone, onError }) {
       for (const line of lines) {
         const raw = line.startsWith("data: ") ? line.slice(6) : line;
         if (!raw.trim()) continue;
-        try { onEvent(JSON.parse(raw)); } catch { /**/ }
+        try {
+          const event = JSON.parse(raw);
+          if (event.type === "architecture" || event.type === "done") receivedResult = true;
+          if (event.type === "error") { onError(event.message || "Architecture generation failed"); return; }
+          onEvent(event);
+        } catch { /**/ }
       }
     }
+    if (!receivedResult) { onError("The AI response ended before a design was ready. Please retry."); return; }
     onDone();
   } catch (e) { onError(e.message); }
 }
@@ -427,14 +434,25 @@ async function getClarifyingQuestions(requirements, { onQuestions, onError }) {
   } catch (e) { onError(e.message); }
 }
 
+function suggestedAnswer(question) {
+  const q = question.toLowerCase();
+  if (/transaction|traffic|request|throughput|latency|peak/.test(q)) return "Start with 100 requests/second; target p95 < 300 ms. Validate with load testing.";
+  if (/region|geograph|residency|location/.test(q)) return "Primary region: us-east-1; no additional residency requirement assumed. Confirm before production.";
+  if (/account|vpc|existing|integrat|shared/.test(q)) return "Assume a new AWS account and VPC; no existing shared services. Confirm integration needs before deployment.";
+  if (/experience|operat|overhead|team/.test(q)) return "Prefer managed AWS services and low operational overhead; platform team owns guardrails.";
+  if (/availability|recovery|failover|downtime/.test(q)) return "Multi-AZ in one region; RPO 1 hour and RTO 4 hours as planning assumptions.";
+  if (/budget|cost/.test(q)) return "Optimize for managed-service cost; set a budget alert and refine after sizing.";
+  return "Use standard production defaults; mark this assumption for review before deployment.";
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Architect() {
   const [geminiAvailable, setGeminiAvailable]   = useState(null);
   const [step, setStep]                         = useState("form"); // form | clarify | result
   const [requirements, setRequirements]         = useState("");
-  const [appName, setAppName]                   = useState("");
-  const [teamName, setTeamName]                 = useState("");
+  const [appName, setAppName]                   = useState("sample-app");
+  const [teamName, setTeamName]                 = useState("platform");
   const [env, setEnv]                           = useState("dev");
   const [scale, setScale]                       = useState("medium");
   const [compliance, setCompliance]             = useState([]);
@@ -476,7 +494,11 @@ export default function Architect() {
     setClarifying(true); setError("");
     await getClarifyingQuestions(requirements, {
       onQuestions: (qs) => {
-        if (qs.length) { setClarifyQuestions(qs); setStep("clarify"); }
+        if (qs.length) {
+          setClarifyQuestions(qs);
+          setClarifyAnswers(Object.fromEntries(qs.map(q => [q, suggestedAnswer(q)])));
+          setStep("clarify");
+        }
         else handleGenerate();
       },
       onError: () => handleGenerate(), // graceful fallback
@@ -743,6 +765,10 @@ export default function Architect() {
                   placeholder="Your answer…"
                   className="w-full bg-[var(--bg-muted)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-accent/50"
                 />
+                <button type="button" onClick={() => setClarifyAnswers(p => ({ ...p, [q]: suggestedAnswer(q) }))}
+                  className="mt-1 text-[10px] text-accent hover:underline">
+                  Use suggested assumption
+                </button>
               </div>
             ))}
           </div>
@@ -773,7 +799,16 @@ export default function Architect() {
               ))}
             </div>
           )}
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && (
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-red-400">{error}</p>
+              {!architecture && !creating && (
+                <button type="button" onClick={handleGenerate} className="text-xs text-accent hover:underline">
+                  Retry design
+                </button>
+              )}
+            </div>
+          )}
 
           {architecture && !provisioning && !done && (
             <>

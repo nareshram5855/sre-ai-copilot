@@ -597,7 +597,10 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
                 continue
             svg.append(_icon_box(cx, cy, node))
 
-    # ── Edges ─────────────────────────────────────────────────────────────────
+    # ── Request path only ─────────────────────────────────────────────────────
+    # Supporting relationships belong in the service notes, not as a web of
+    # dashed lines across subnet/account boundaries. Keep the visual focused
+    # on the numbered end-to-end request flow.
     def _edge_pts(e: dict):
         x1, y1 = node_cx.get(e["from"]), node_cy.get(e["from"])
         x2, y2 = node_cx.get(e["to"]),   node_cy.get(e["to"])
@@ -609,35 +612,19 @@ def _render_from_diagram(diagram: dict, arch_name: str) -> str:
         sx, sy = dx / dist * half, dy / dist * half
         return int(x1+sx), int(y1+sy), int(x2-sx), int(y2-sy)
 
-    # Only show label on the FIRST dashed edge from each source node
-    shown_dashed_labels: set[str] = set()
-
-    for dashed_pass in (False, True):
-        for e in edges_raw:
-            if bool(e.get("dashed")) != dashed_pass:
-                continue
-            pts = _edge_pts(e)
-            if not pts:
-                continue
-            ax1, ay1, ax2, ay2 = pts
-            seq   = e.get("seq") if not e.get("dashed") else None
-            label = e.get("label", "")
-
-            # Suppress duplicate labels from the same dashed source
-            if e.get("dashed") and label:
-                src = e["from"]
-                if src in shown_dashed_labels:
-                    label = ""
-                else:
-                    shown_dashed_labels.add(src)
-
-            # Offset label slightly off midpoint to avoid overlapping circle badges
-            mid_offset = 18 if seq is not None else 0
-
-            svg.append(_arrow(ax1, ay1, ax2, ay2,
-                              label=label, seq=seq,
-                              dashed=bool(e.get("dashed")),
-                              mid_offset=mid_offset))
+    primary = sorted(
+        (e for e in edges_raw if not e.get("dashed") and isinstance(e.get("seq"), int)),
+        key=lambda e: e["seq"],
+    )
+    seen_pairs: set[tuple[str, str]] = set()
+    for e in primary:
+        pair = (e.get("from", ""), e.get("to", ""))
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+        pts = _edge_pts(e)
+        if pts:
+            svg.append(_arrow(*pts, seq=e["seq"]))
 
     # ── Legend ────────────────────────────────────────────────────────────────
     items = [

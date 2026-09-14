@@ -286,23 +286,37 @@ async def _generate_architecture_stream(
     await asyncio.sleep(0)
 
     try:
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=_gtypes.GenerateContentConfig(
-                system_instruction=_ARCHITECT_SYSTEM,
-                temperature=0.2,
-                max_output_tokens=4096,
-                thinking_config=_gtypes.ThinkingConfig(thinking_budget=0),
-            ),
-        )
-        raw = (response.text or "").strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-            raw = raw.rsplit("```", 1)[0]
-        raw = raw.strip()
-
-        architecture = json.loads(raw)
+        architecture = None
+        last_error = None
+        for attempt in range(2):
+            response = await client.aio.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt if attempt == 0 else prompt + "\n\nYour previous output was invalid or incomplete JSON. Return a smaller complete JSON object matching the schema; omit optional prose.",
+                config=_gtypes.GenerateContentConfig(
+                    system_instruction=_ARCHITECT_SYSTEM,
+                    temperature=0.2,
+                    max_output_tokens=8192,
+                    response_mime_type="application/json",
+                    thinking_config=_gtypes.ThinkingConfig(thinking_budget=0),
+                ),
+            )
+            raw = (response.text or "").strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+                raw = raw.rsplit("```", 1)[0].strip()
+            try:
+                candidate = json.loads(raw)
+                if not isinstance(candidate, dict) or not candidate.get("modules"):
+                    raise ValueError("Missing architecture modules")
+                architecture = candidate
+                break
+            except (json.JSONDecodeError, ValueError) as exc:
+                last_error = exc
+                logger.warning("Architect response attempt %s invalid: %s", attempt + 1, exc)
+                if attempt == 0:
+                    yield _sse({"type": "status", "message": "Checking design output and retrying…"})
+        if architecture is None:
+            raise ValueError(f"AI could not return a complete design after retry: {last_error}")
         # Attach AWS-style SVG diagram (frontend uses this when available;
         # falls back to Gemini's mermaid which now carries classDef colors)
         try:
